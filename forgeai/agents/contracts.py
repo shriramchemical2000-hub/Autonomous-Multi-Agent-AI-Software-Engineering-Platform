@@ -285,3 +285,31 @@ class CodeReviewDocument(BaseModel):
         if len(ids) != len(set(ids)):
             raise ValueError("Code review contains duplicate finding IDs.")
         return self
+
+
+
+class CodeRepairChange(BaseModel):
+    """A full replacement for one existing non-test source file."""
+
+    model_config = ConfigDict(extra="forbid")
+    file_path: str = Field(min_length=1, max_length=180)
+    replacement_content: str = Field(min_length=1, max_length=30000)
+    rationale: str = Field(min_length=1)
+    addresses: list[str] = Field(default_factory=list)
+
+
+class CodeRepairDocument(BaseModel):
+    """Bounded repair proposal; it never adds, deletes, or edits test files."""
+
+    model_config = ConfigDict(extra="forbid")
+    repair_summary: str = Field(min_length=1)
+    changes: list[CodeRepairChange] = Field(min_length=1, max_length=10)
+    addressed_findings: list[str] = Field(default_factory=list)
+    unresolved_risks: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_unique_repair_paths(self):
+        paths = [change.file_path for change in self.changes]
+        if len(paths) != len(set(paths)):
+            raise ValueError("Repair proposal contains duplicate file paths.")
+        return self
