@@ -1,10 +1,23 @@
-"""ForgeAI — initial Streamlit workspace."""
+"""ForgeAI — human-supervised AI software engineering workspace."""
 from __future__ import annotations
 
 import streamlit as st
 
+from forgeai.agents.contracts import AgentContext
+from forgeai.agents.requirements_analyst import AgentExecutionError, RequirementsAnalyst
 from forgeai.config import get_settings
-from forgeai.database import create_project, initialize_database, list_projects
+from forgeai.database import (
+    add_project_event,
+    create_project,
+    get_latest_project_artifact,
+    initialize_database,
+    list_project_events,
+    list_projects,
+    review_project_artifact,
+    save_project_artifact,
+)
+from forgeai.providers.base import ModelProviderError
+from forgeai.providers.gemini import GeminiProvider
 
 settings = get_settings()
 initialize_database(settings.database_path)
@@ -33,6 +46,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+projects = list_projects(settings.database_path)
+
 with st.sidebar:
     st.markdown("## ⚙️ ForgeAI")
     st.caption("Autonomous Multi-Agent Software Engineering")
@@ -42,10 +57,65 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
-    st.caption("PHASE 1 · FOUNDATION")
-    st.caption("Agent execution is not enabled yet.")
+    st.caption("PHASE 4 · REQUIREMENTS WORKSPACE")
+    st.caption("One specialist is executable; remaining roles are planned.")
 
-projects = list_projects(settings.database_path)
+
+def render_requirements(document: dict) -> None:
+    """Render the complete validated requirements artifact, not just its summary."""
+    st.subheader(document["product_name"])
+    st.markdown("**Problem statement**")
+    st.write(document["problem_statement"])
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Target users**")
+        for item in document["target_users"]:
+            st.markdown(f"- {item}")
+        st.markdown("**Included in scope**")
+        for item in document["scope_in"]:
+            st.markdown(f"- {item}")
+    with right:
+        st.markdown("**Outside scope**")
+        for item in document["scope_out"]:
+            st.markdown(f"- {item}")
+        st.markdown("**Assumptions to confirm**")
+        for item in document["assumptions"]:
+            st.markdown(f"- {item}")
+    st.divider()
+    st.markdown("### Functional requirements")
+    if document["functional_requirements"]:
+        for item in document["functional_requirements"]:
+            with st.expander(
+                f"{item['requirement_id']} · {item['title']} · {item['priority'].upper()}",
+                expanded=True,
+            ):
+                st.write(item["description"])
+                st.markdown("**Acceptance criteria**")
+                for criterion in item["acceptance_criteria"]:
+                    st.markdown(f"- {criterion}")
+    else:
+        st.info("No functional requirements were returned. Review the brief and open questions.")
+    st.markdown("### User stories")
+    if document["user_stories"]:
+        for story in document["user_stories"]:
+            with st.expander(f"{story['story_id']} · As a {story['persona']}", expanded=True):
+                st.write(f"As a {story['persona']}, I want to {story['action']}, so that {story['benefit']}")
+                st.markdown("**Acceptance criteria**")
+                for criterion in story["acceptance_criteria"]:
+                    st.markdown(f"- {criterion}")
+                st.caption("Related requirements: " + (", ".join(story["related_requirement_ids"]) or "Not linked"))
+    else:
+        st.info("No user stories were returned.")
+    st.markdown("### Non-functional requirements")
+    for item in document["non_functional_requirements"]:
+        st.markdown(f"- {item}")
+    st.markdown("### Open questions")
+    if document["open_questions"]:
+        for item in document["open_questions"]:
+            st.markdown(f"- {item}")
+    else:
+        st.success("No open questions were identified by the analyst.")
+
 
 if page == "Overview":
     st.markdown(
@@ -62,7 +132,7 @@ if page == "Overview":
     c1, c2, c3 = st.columns(3)
     c1.metric("Projects created", len(projects))
     c2.metric("Specialist roles designed", "8")
-    c3.metric("Workflow stage", "Foundation")
+    c3.metric("Executable specialists", "1")
     st.subheader("Engineering workflow")
     stages = [
         ("01 · Discover", "Convert the product idea into structured requirements."),
@@ -91,7 +161,7 @@ if page == "Overview":
 
 elif page == "Product Studio":
     st.title("Product Studio")
-    st.write("Start with a product idea. ForgeAI will progressively turn it into an auditable engineering workflow.")
+    st.write("Create a project, generate an implementation-ready requirements specification, and review it before architecture begins.")
     with st.form("new_project_form", clear_on_submit=True):
         name = st.text_input("Project name", placeholder="e.g. Hospital Appointment Platform")
         brief = st.text_area(
@@ -103,11 +173,81 @@ elif page == "Product Studio":
         if not name.strip():
             st.error("Enter a project name before continuing.")
         elif not brief.strip():
-            st.error("Add a short product brief so the project has useful context.")
+            st.error("Add a product brief so the analyst has enough context.")
         else:
             project_id = create_project(settings.database_path, name, brief)
             st.success(f"Project workspace created — ID {project_id}.")
             st.rerun()
+
+    st.divider()
+    st.subheader("Requirements Analyst")
+    if not projects:
+        st.info("Create a project workspace above to enable requirements generation.")
+    else:
+        selected = st.selectbox(
+            "Select a project",
+            projects,
+            format_func=lambda p: f"#{p['id']} · {p['name']}",
+            key="requirements_project",
+        )
+        st.caption("The analyst uses the saved project brief and returns a structured specification. Generation requires a Gemini API key.")
+        if not settings.has_model_api_key:
+            st.warning("Gemini API key not configured. Add GEMINI_API_KEY to your local environment or Streamlit secrets to enable generation. No key is needed to browse the app.")
+        if st.button("Generate requirements", type="primary", disabled=not settings.has_model_api_key):
+            with st.spinner("Requirements Analyst is preparing and validating the specification..."):
+                try:
+                    context = AgentContext(project_id=selected["id"], user_request=selected["brief"])
+                    result = RequirementsAnalyst(GeminiProvider(settings)).run(context)
+                    artifact_id = save_project_artifact(
+                        settings.database_path,
+                        selected["id"],
+                        "requirements",
+                        result.artifact["requirements"],
+                    )
+                    add_project_event(
+                        settings.database_path,
+                        selected["id"],
+                        "requirements_agent_completed",
+                        result.summary,
+                    )
+                    st.session_state["forgeai_last_artifact_id"] = artifact_id
+                    st.success(result.summary)
+                    for warning in result.warnings:
+                        st.warning(warning)
+                    st.rerun()
+                except (AgentExecutionError, ModelProviderError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"Requirements generation failed ({type(exc).__name__}). Check the app logs and configuration.")
+
+        artifact = get_latest_project_artifact(settings.database_path, selected["id"], "requirements")
+        if artifact:
+            st.divider()
+            st.markdown("## Generated requirements specification")
+            status = artifact["review_status"]
+            st.caption(f"Version {artifact['version']} · Generated {artifact['created_at']} · Review status: {status.replace('_', ' ').title()}")
+            render_requirements(artifact["content"])
+            if status == "pending":
+                st.divider()
+                st.markdown("### Human approval")
+                st.write("Review the complete specification above. Approval records your decision; requesting changes records feedback for the next revision.")
+                review_notes = st.text_area("Review notes (optional)", key=f"review_notes_{artifact['id']}")
+                approve_col, changes_col = st.columns(2)
+                with approve_col:
+                    if st.button("Approve requirements", type="primary", key=f"approve_{artifact['id']}"):
+                        review_project_artifact(settings.database_path, artifact["id"], "approved", review_notes)
+                        st.success("Requirements approved and decision recorded.")
+                        st.rerun()
+                with changes_col:
+                    if st.button("Request changes", key=f"changes_{artifact['id']}"):
+                        if not review_notes.strip():
+                            st.error("Add notes describing the changes needed.")
+                        else:
+                            review_project_artifact(settings.database_path, artifact["id"], "changes_requested", review_notes)
+                            st.warning("Change request recorded. The analyst has not automatically regenerated the specification.")
+                            st.rerun()
+            else:
+                st.info(f"Human decision: {status.replace('_', ' ').title()}. {artifact['review_notes']}")
     st.divider()
     st.subheader("Your projects")
     if projects:
@@ -120,33 +260,46 @@ elif page == "Product Studio":
 
 elif page == "Agent Command Center":
     st.title("Agent Command Center")
-    st.write("The target team is defined below. Agents are marked as planned until their execution and validation paths are implemented.")
+    st.write("ForgeAI currently has one executable specialist. The other roles are clearly marked as planned.")
     agents = [
-        ("Project Manager", "Coordinates workflow, dependencies, and hand-offs."),
-        ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria."),
-        ("Software Architect", "Designs components, data models, and API contracts."),
-        ("UI/UX Designer", "Defines journeys, interaction patterns, and screen specifications."),
-        ("Backend Developer", "Implements approved services and business logic."),
-        ("Frontend Developer", "Builds user-facing components against agreed contracts."),
-        ("QA Engineer", "Creates tests, runs validation, and reports defects."),
-        ("Code Reviewer", "Reviews correctness, maintainability, and security risks."),
+        ("Project Manager", "Coordinates workflow, dependencies, and hand-offs.", False),
+        ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria.", True),
+        ("Software Architect", "Designs components, data models, and API contracts.", False),
+        ("UI/UX Designer", "Defines journeys, interaction patterns, and screen specifications.", False),
+        ("Backend Developer", "Implements approved services and business logic.", False),
+        ("Frontend Developer", "Builds user-facing components against agreed contracts.", False),
+        ("QA Engineer", "Creates tests, runs validation, and reports defects.", False),
+        ("Code Reviewer", "Reviews correctness, maintainability, and security risks.", False),
     ]
     for start in range(0, len(agents), 2):
         left, right = st.columns(2)
-        for col, (agent_name, responsibility) in zip((left, right), agents[start:start + 2]):
+        for col, (agent_name, responsibility, active) in zip((left, right), agents[start:start + 2]):
             with col:
                 st.markdown(f"**{agent_name}**")
                 st.caption(responsibility)
-                st.info("Planned · Not yet executable", icon="🧩")
+                if active:
+                    st.success("Implemented · Invoked from Product Studio")
+                else:
+                    st.info("Planned · Not yet executable", icon="🧩")
 
 elif page == "Project Memory":
     st.title("Project Memory")
-    st.write("Phase 1 stores project briefs in SQLite. Retrieval, semantic memory, and decision linking will be introduced later.")
+    st.write("Project briefs, generated artifacts, human decisions, and audit events are stored in SQLite.")
     if projects:
         selected = st.selectbox("Choose a project", projects, format_func=lambda p: f"#{p['id']} · {p['name']}")
         st.subheader("Saved product brief")
         st.write(selected["brief"] or "No brief saved.")
-        st.caption(f"Current status: {selected['status']}")
+        artifact = get_latest_project_artifact(settings.database_path, selected["id"], "requirements")
+        if artifact:
+            st.subheader("Latest requirements artifact")
+            st.caption(f"Version {artifact['version']} · {artifact['review_status'].replace('_', ' ').title()}")
+            st.json(artifact["content"], expanded=False)
+        st.subheader("Audit history")
+        events = list_project_events(settings.database_path, selected["id"])
+        if events:
+            st.dataframe(events, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No project events recorded yet.")
     else:
         st.info("Create a project first to begin its memory record.")
 
@@ -157,10 +310,10 @@ else:
     st.write(f"Database: {settings.database_path}")
     st.write(f"Model preference: {settings.model_name}")
     if settings.has_model_api_key:
-        st.success("A model API key is configured. Model calls are not active in Phase 1.")
+        st.success("A model API key is configured. The Requirements Analyst can make model requests.")
     else:
-        st.warning("No model API key configured. This is expected for the Phase 1 foundation.")
-    st.caption("Credentials are read from environment variables. Never commit secrets to GitHub.")
+        st.warning("No model API key configured. Add GEMINI_API_KEY to enable live generation.")
+    st.caption("Credentials are read from environment variables or Streamlit secrets. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.1.0 · Phase 1 foundation · No generated code is executed by this application.")
+st.caption("ForgeAI 0.2.0 · Requirements Analyst integration · Generated code is never executed by this application.")
