@@ -33,8 +33,9 @@ class GeminiProvider:
                 model=self.settings.model_name,
                 google_api_key=self.settings.gemini_api_key,
                 temperature=temperature,
-                timeout=90,
-                max_retries=1,
+                timeout=180,
+                max_retries=3,
+                max_output_tokens=8192,
             )
             response = model.invoke(
                 [
