@@ -651,7 +651,9 @@ elif page == "Product Studio":
                         "architecture": latest_architecture["content"] if latest_architecture else {},
                         "code_bundle": code_artifact["content"], "code_bundle_approved": True,
                     })
-                    save_project_artifact(settings.database_path, selected["id"], "code_review", workflow_result["code_review"])
+                    review_content = dict(workflow_result["code_review"])
+                    review_content["source_bundle_artifact_id"] = code_artifact["id"]
+                    save_project_artifact(settings.database_path, selected["id"], "code_review", review_content)
                     add_project_event(settings.database_path, selected["id"], "code_reviewer_completed", workflow_result["summary"])
                     st.success(workflow_result["summary"])
                     st.rerun()
@@ -740,6 +742,106 @@ elif page == "Product Studio":
                     st.code(execution["output"], language="text")
                 if execution["status"] in {"failed", "timed_out", "output_limit_exceeded", "runner_unavailable", "no_tests", "disabled", "invalid_bundle"}:
                     st.warning("This result is not a successful test run. Review the message and output before proceeding.")
+
+
+
+        st.divider()
+        st.subheader("Bounded Code Repair · Human-supervised")
+        st.caption("ForgeAI can propose up to two repair candidates per repair cycle. It may replace existing application source files only; test files are preserved. Each candidate becomes a new pending source-bundle version and must be reviewed before regression execution.")
+        latest_execution_for_repair = get_latest_project_artifact(settings.database_path, selected["id"], "execution_report")
+        latest_review_for_repair = get_latest_project_artifact(settings.database_path, selected["id"], "code_review")
+        execution_for_repair = {}
+        review_for_repair = {}
+        if latest_execution_for_repair and code_artifact:
+            candidate_execution = latest_execution_for_repair["content"]
+            if candidate_execution.get("source_bundle_artifact_id") == code_artifact["id"]:
+                execution_for_repair = candidate_execution
+        if latest_review_for_repair and code_artifact:
+            candidate_review = latest_review_for_repair["content"]
+            if candidate_review.get("source_bundle_artifact_id") == code_artifact["id"]:
+                review_for_repair = candidate_review
+
+        has_failed_execution = execution_for_repair.get("status") in {"failed", "timed_out", "output_limit_exceeded"}
+        has_review_findings = bool(review_for_repair.get("findings"))
+        latest_repair = get_latest_project_artifact(settings.database_path, selected["id"], "repair_report")
+        if code_artifact and code_artifact["review_status"] == "approved":
+            if latest_repair and latest_repair["content"].get("candidate_source_bundle_artifact_id") == code_artifact["id"]:
+                repair_cycle_id = latest_repair["content"]["cycle_source_bundle_artifact_id"]
+                repair_attempt = int(latest_repair["content"]["attempt"]) + 1
+            else:
+                repair_cycle_id = code_artifact["id"]
+                repair_attempt = 1
+            repair_allowed = repair_attempt <= 2 and (has_failed_execution or has_review_findings)
+            if not (has_failed_execution or has_review_findings):
+                st.info("A repair proposal becomes available after a failed Docker test run or a current-source static review with findings.")
+            elif repair_attempt > 2:
+                st.warning("This repair cycle has reached its two-proposal limit. Start a new source baseline to begin another cycle.")
+            if st.button(
+                f"Propose repair · Attempt {repair_attempt}/2",
+                type="primary",
+                key=f"propose_repair_{selected['id']}_{code_artifact['id']}",
+                disabled=not repair_allowed or not settings.has_model_api_key,
+            ):
+                try:
+                    repair_result = build_forge_workflow(GeminiProvider(settings)).invoke({
+                        "project_id": selected["id"],
+                        "user_request": selected["brief"],
+                        "requested_stage": "repair",
+                        "requirements": latest_requirements["content"],
+                        "requirements_approved": latest_requirements["review_status"] == "approved",
+                        "code_bundle": code_artifact["content"],
+                        "code_bundle_approved": True,
+                        "execution_report": execution_for_repair,
+                        "code_review": review_for_repair,
+                        "repair_attempt": repair_attempt,
+                        "repair_authorized": True,
+                    })
+                    candidate_id = save_project_artifact(
+                        settings.database_path, selected["id"], "code_bundle", repair_result["code_bundle"]
+                    )
+                    proposal = repair_result["repair_proposal"]
+                    save_project_artifact(settings.database_path, selected["id"], "repair_report", {
+                        "cycle_source_bundle_artifact_id": repair_cycle_id,
+                        "source_bundle_version": code_artifact["version"],
+                        "candidate_source_bundle_artifact_id": candidate_id,
+                        "attempt": repair_attempt,
+                        "repair_summary": proposal["repair_summary"],
+                        "changes": proposal["changes"],
+                        "addressed_findings": proposal["addressed_findings"],
+                        "unresolved_risks": proposal["unresolved_risks"],
+                    })
+                    add_project_event(
+                        settings.database_path, selected["id"], "repair_candidate_created",
+                        f"Repair attempt {repair_attempt}/2 created candidate source artifact {candidate_id}; pending human approval.",
+                    )
+                    st.success("Repair candidate created as a new pending source-bundle version. Review it before approving and rerunning regression tests.")
+                    st.rerun()
+                except (ModelProviderError, ValueError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"Repair proposal failed ({type(exc).__name__}). Check the app logs.")
+        else:
+            st.info("Code repair is locked until the latest source bundle is explicitly approved.")
+
+        if latest_repair:
+            repair = latest_repair["content"]
+            st.markdown(f"### Latest repair proposal · Attempt {repair['attempt']}/2")
+            st.write(repair["repair_summary"])
+            st.caption(f"Based on source bundle v{repair['source_bundle_version']} · Candidate artifact ID {repair['candidate_source_bundle_artifact_id']}")
+            for change in repair["changes"]:
+                with st.expander(f"{change['file_path']} · Proposed replacement"):
+                    st.write(change["rationale"])
+                    st.caption("Addresses: " + (", ".join(change["addresses"]) or "Not specified"))
+            if repair["addressed_findings"]:
+                st.markdown("**Findings targeted**")
+                for finding in repair["addressed_findings"]:
+                    st.markdown(f"- {finding}")
+            if repair["unresolved_risks"]:
+                st.markdown("**Unresolved risks**")
+                for risk in repair["unresolved_risks"]:
+                    st.warning(risk)
+            st.info("The candidate source bundle is a separate pending artifact. Approve it in the source bundle review section, then execute the Docker regression suite again. Passing tests are required to verify runtime repair.")
+
 
     st.divider()
     st.subheader("Your projects")
