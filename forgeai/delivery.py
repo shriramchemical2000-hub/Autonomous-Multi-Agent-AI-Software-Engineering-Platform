@@ -5,6 +5,17 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any
 
+ARTIFACT_TYPES = (
+    "requirements",
+    "architecture",
+    "uiux_design",
+    "code_bundle",
+    "qa_test_plan",
+    "code_review",
+    "execution_report",
+    "repair_report",
+)
+
 def _approved(artifacts: dict[str, dict[str, Any]], kind: str) -> bool:
     item = artifacts.get(kind)
     return bool(item and item.get("review_status") == "approved")
