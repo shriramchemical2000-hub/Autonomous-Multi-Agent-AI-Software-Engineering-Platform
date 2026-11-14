@@ -41,5 +41,5 @@ def get_settings() -> Settings:
         environment=os.getenv("FORGEAI_ENV", "development").strip() or "development",
         database_path=Path(os.getenv("FORGEAI_DB_PATH", "data/forgeai.db")),
         gemini_api_key=api_key,
-        model_name=os.getenv("FORGEAI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash",
+        model_name=os.getenv("FORGEAI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash",
     )
