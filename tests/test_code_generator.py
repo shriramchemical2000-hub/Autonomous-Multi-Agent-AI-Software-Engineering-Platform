@@ -81,7 +81,7 @@ def test_code_generator_stops_after_two_invalid_responses():
 
 
 @pytest.mark.parametrize("unsafe_path", [
-    "../outside.py", "/tmp/outside.py", "C:/outside.py", "src\\\\escape.py",
+    "../outside.py", "/tmp/outside.py", "C:/outside.py", "src\\escape.py",
     ".github/workflows/build.yml", "src/.env", "src/data.bin",
 ])
 def test_generated_file_rejects_unsafe_paths(unsafe_path):
@@ -93,4 +93,28 @@ def test_generated_file_rejects_unsafe_paths(unsafe_path):
 def test_generated_file_rejects_duplicate_paths():
     payload = {**VALID_BUNDLE, "files": [VALID_BUNDLE["files"][0], VALID_BUNDLE["files"][0]]}
     with pytest.raises(ValidationError, match="duplicate file paths"):
+        CodeGenerationDocument.model_validate(payload)
+
+
+
+def test_generated_bundle_rejects_per_file_and_total_size_limits():
+    oversized_file = {**VALID_BUNDLE, "files": [{**VALID_BUNDLE["files"][0], "content": "x" * 30001}]}
+    with pytest.raises(ValidationError):
+        CodeGenerationDocument.model_validate(oversized_file)
+
+    many_files = [
+        {"path": f"src/file_{index}.py", "language": "python", "purpose": "test", "content": "x" * 10000}
+        for index in range(21)
+    ]
+    oversized_bundle = {**VALID_BUNDLE, "files": many_files}
+    with pytest.raises(ValidationError, match="200 KB"):
+        CodeGenerationDocument.model_validate(oversized_bundle)
+
+
+@pytest.mark.parametrize("reserved_path", [
+    "src/CON.py", "src/name.py:stream", "src/trailing .py", "src/trailing..py ",
+])
+def test_generated_file_rejects_windows_reserved_or_invalid_segments(reserved_path):
+    payload = {**VALID_BUNDLE, "files": [{**VALID_BUNDLE["files"][0], "path": reserved_path}]}
+    with pytest.raises(ValidationError):
         CodeGenerationDocument.model_validate(payload)
