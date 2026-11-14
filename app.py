@@ -4,8 +4,8 @@ from __future__ import annotations
 import streamlit as st
 
 from forgeai.agents.contracts import AgentContext
-from forgeai.agents.requirements_analyst import AgentExecutionError, RequirementsAnalyst
-from forgeai.agents.software_architect import SoftwareArchitect
+from forgeai.agents.requirements_analyst import AgentExecutionError
+from forgeai.agents.software_architect import AgentExecutionError as ArchitectExecutionError
 from forgeai.config import get_settings
 from forgeai.database import (
     add_project_event,
@@ -19,6 +19,7 @@ from forgeai.database import (
 )
 from forgeai.providers.base import ModelProviderError
 from forgeai.providers.gemini import GeminiProvider
+from forgeai.orchestration.workflow import build_forge_workflow
 
 settings = get_settings()
 initialize_database(settings.database_path)
@@ -59,7 +60,7 @@ with st.sidebar:
     )
     st.divider()
     st.caption("PHASE 5 · ARCHITECTURE WORKSPACE")
-    st.caption("One specialist is executable; remaining roles are planned.")
+    st.caption("Two specialists are coordinated through an approval-gated LangGraph workflow.")
 
 
 def render_requirements(document: dict) -> None:
@@ -198,25 +199,30 @@ elif page == "Product Studio":
             with st.spinner("Requirements Analyst is preparing and validating the specification..."):
                 try:
                     context = AgentContext(project_id=selected["id"], user_request=selected["brief"])
-                    result = RequirementsAnalyst(GeminiProvider(settings)).run(context)
+                    workflow = build_forge_workflow(GeminiProvider(settings))
+                    workflow_result = workflow.invoke({
+                        "project_id": selected["id"],
+                        "user_request": selected["brief"],
+                        "requested_stage": "requirements",
+                    })
                     artifact_id = save_project_artifact(
                         settings.database_path,
                         selected["id"],
                         "requirements",
-                        result.artifact["requirements"],
+                        workflow_result["requirements"],
                     )
                     add_project_event(
                         settings.database_path,
                         selected["id"],
                         "requirements_agent_completed",
-                        result.summary,
+                        workflow_result["summary"],
                     )
                     st.session_state["forgeai_last_artifact_id"] = artifact_id
-                    st.success(result.summary)
-                    for warning in result.warnings:
+                    st.success(workflow_result["summary"])
+                    for warning in workflow_result.get("warnings", []):
                         st.warning(warning)
                     st.rerun()
-                except (AgentExecutionError, ModelProviderError) as exc:
+                except (AgentExecutionError, ArchitectExecutionError, ModelProviderError, ValueError) as exc:
                     st.error(str(exc))
                 except Exception as exc:
                     st.error(f"Requirements generation failed ({type(exc).__name__}). Check the app logs and configuration.")
@@ -265,11 +271,18 @@ elif page == "Product Studio":
                         user_request=f"Create an architecture for {approved_requirements['content'].get('product_name', selected['name'])}.",
                         prior_artifacts={"requirements": approved_requirements["content"]},
                     )
-                    result = SoftwareArchitect(GeminiProvider(settings)).run(context)
-                    save_project_artifact(settings.database_path, selected["id"], "architecture", result.artifact["architecture"])
-                    add_project_event(settings.database_path, selected["id"], "software_architect_completed", result.summary)
-                    st.success(result.summary)
-                    for warning in result.warnings:
+                    workflow = build_forge_workflow(GeminiProvider(settings))
+                    workflow_result = workflow.invoke({
+                        "project_id": selected["id"],
+                        "user_request": selected["brief"],
+                        "requested_stage": "architecture",
+                        "requirements": approved_requirements["content"],
+                        "requirements_approved": approved_requirements["review_status"] == "approved",
+                    })
+                    save_project_artifact(settings.database_path, selected["id"], "architecture", workflow_result["architecture"])
+                    add_project_event(settings.database_path, selected["id"], "software_architect_completed", workflow_result["summary"])
+                    st.success(workflow_result["summary"])
+                    for warning in workflow_result.get("warnings", []):
                         st.warning(warning)
                     st.rerun()
                 except (AgentExecutionError, ModelProviderError) as exc:
@@ -350,7 +363,7 @@ elif page == "Product Studio":
 
 elif page == "Agent Command Center":
     st.title("Agent Command Center")
-    st.write("ForgeAI currently has one executable specialist. The other roles are clearly marked as planned.")
+    st.write("ForgeAI has two executable specialists coordinated by a LangGraph workflow. The remaining roles are clearly marked as planned.")
     agents = [
         ("Project Manager", "Coordinates workflow, dependencies, and hand-offs.", False),
         ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria.", True),
@@ -406,4 +419,4 @@ else:
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.3.0 · Requirements Analyst + Software Architect · Generated code is never executed by this application.")
+st.caption("ForgeAI 0.4.0 · LangGraph-coordinated Requirements Analyst + Software Architect · Generated code is never executed by this application.")
