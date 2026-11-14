@@ -183,6 +183,13 @@ class GeneratedSourceFile(BaseModel):
             raise ValueError("Generated file paths cannot contain empty, dot, or parent segments.")
         if any(part.startswith(".") for part in parts):
             raise ValueError("Hidden paths are not permitted in generated bundles.")
+        if any(
+            ":" in part or part.endswith((".", " "))
+            or re.search(r"[\\x00-\\x1f]", part)
+            or re.match(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\..*)?$", part, re.IGNORECASE)
+            for part in parts
+        ):
+            raise ValueError("Generated paths contain a Windows-reserved or invalid path segment.")
         allowed_suffixes = {".py", ".html", ".css", ".js", ".ts", ".tsx", ".jsx", ".json", ".md", ".yaml", ".yml", ".toml"}
         suffix = PurePosixPath(value).suffix.lower()
         if suffix not in allowed_suffixes:
