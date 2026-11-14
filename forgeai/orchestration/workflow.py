@@ -9,14 +9,15 @@ from forgeai.agents.contracts import AgentContext
 from forgeai.agents.requirements_analyst import RequirementsAnalyst
 from forgeai.agents.software_architect import SoftwareArchitect
 from forgeai.agents.uiux_designer import UIUXDesigner
+from forgeai.agents.code_generator import CodeGenerator
 from forgeai.orchestration.state import ForgeWorkflowState
 from forgeai.providers.base import ModelProvider
 
 
-def _route_entry(state: ForgeWorkflowState) -> Literal["requirements", "architecture", "uiux"]:
+def _route_entry(state: ForgeWorkflowState) -> Literal["requirements", "architecture", "uiux", "codegen"]:
     requested = state.get("requested_stage")
-    if requested not in {"requirements", "architecture", "uiux"}:
-        raise ValueError("requested_stage must be 'requirements', 'architecture', or 'uiux'.")
+    if requested not in {"requirements", "architecture", "uiux", "codegen"}:
+        raise ValueError("requested_stage must be 'requirements', 'architecture', 'uiux', or 'codegen'.")
     return requested  # type: ignore[return-value]
 
 
@@ -95,12 +96,49 @@ def _uiux_node(provider: ModelProvider):
     return run
 
 
+def _codegen_node(provider: ModelProvider):
+    def run(state: ForgeWorkflowState) -> ForgeWorkflowState:
+        if state.get("requirements_approved") is not True:
+            raise ValueError("Code generation is blocked: requirements must be explicitly approved.")
+        if state.get("architecture_approved") is not True:
+            raise ValueError("Code generation is blocked: architecture must be explicitly approved.")
+        if state.get("uiux_approved") is not True:
+            raise ValueError("Code generation is blocked: UI/UX design must be explicitly approved.")
+        requirements = state.get("requirements")
+        architecture = state.get("architecture")
+        uiux_design = state.get("uiux_design")
+        if not all(isinstance(item, dict) for item in (requirements, architecture, uiux_design)):
+            raise ValueError("Code generation requires approved requirements, architecture, and UI/UX artifacts.")
+        result = CodeGenerator(provider).run(
+            AgentContext(
+                project_id=state["project_id"],
+                user_request=f"Implement the approved product: {requirements.get('product_name', 'the product')}.",
+                constraints=state.get("constraints", []),
+                prior_artifacts={
+                    "requirements": requirements,
+                    "architecture": architecture,
+                    "uiux_design": uiux_design,
+                },
+            )
+        )
+        return {
+            "code_bundle": result.artifact["code_bundle"],
+            "current_stage": "code_review",
+            "status": "awaiting_human_approval",
+            "summary": result.summary,
+            "warnings": result.warnings,
+            "messages": [{"agent": result.agent_name, "status": result.status, "summary": result.summary}],
+        }
+    return run
+
+
 def build_forge_workflow(provider: ModelProvider):
     """Compile the bounded graph; each invocation executes one stage and ends for review."""
     graph = StateGraph(ForgeWorkflowState)
     graph.add_node("requirements_analyst", _requirements_node(provider))
     graph.add_node("software_architect", _architecture_node(provider))
     graph.add_node("uiux_designer", _uiux_node(provider))
+    graph.add_node("code_generator", _codegen_node(provider))
     graph.add_conditional_edges(
         START,
         _route_entry,
@@ -108,9 +146,11 @@ def build_forge_workflow(provider: ModelProvider):
             "requirements": "requirements_analyst",
             "architecture": "software_architect",
             "uiux": "uiux_designer",
+            "codegen": "code_generator",
         },
     )
     graph.add_edge("requirements_analyst", END)
     graph.add_edge("software_architect", END)
     graph.add_edge("uiux_designer", END)
+    graph.add_edge("code_generator", END)
     return graph.compile()
