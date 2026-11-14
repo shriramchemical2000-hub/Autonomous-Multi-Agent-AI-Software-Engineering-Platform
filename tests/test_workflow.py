@@ -120,6 +120,34 @@ def test_uiux_stage_consumes_both_approved_artifacts():
     assert "Clinic Booking" in provider.calls[0]
 
 
+def test_codegen_stage_requires_all_three_approval_gates():
+    provider = FakeProvider([json.dumps({"implementation_summary": "x", "implementation_notes": [], "files": [{"path": "src/main.py", "language": "python", "purpose": "entry", "content": "print('x')"}]})])
+    with pytest.raises(ValueError, match="UI/UX design must be explicitly approved"):
+        build_forge_workflow(provider).invoke({
+            "project_id": 5, "user_request": "Implement.", "requested_stage": "codegen",
+            "requirements": VALID_REQUIREMENTS, "requirements_approved": True,
+            "architecture": VALID_ARCHITECTURE, "architecture_approved": True,
+            "uiux_design": VALID_UIUX, "uiux_approved": False,
+        })
+    assert provider.calls == []
+
+
+def test_codegen_stage_runs_only_with_all_three_approvals():
+    provider = FakeProvider([json.dumps({
+        "implementation_summary": "A small first slice.",
+        "implementation_notes": [],
+        "files": [{"path": "src/main.py", "language": "python", "purpose": "entry point", "content": "def main():\\n    return True\\n"}],
+    })])
+    result = build_forge_workflow(provider).invoke({
+        "project_id": 5, "user_request": "Implement.", "requested_stage": "codegen",
+        "requirements": VALID_REQUIREMENTS, "requirements_approved": True,
+        "architecture": VALID_ARCHITECTURE, "architecture_approved": True,
+        "uiux_design": VALID_UIUX, "uiux_approved": True,
+    })
+    assert result["status"] == "awaiting_human_approval"
+    assert result["code_bundle"]["files"][0]["path"] == "src/main.py"
+
+
 def test_unknown_stage_is_rejected():
     provider = FakeProvider([])
     with pytest.raises(ValueError, match="requested_stage"):
