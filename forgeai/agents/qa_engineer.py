@@ -66,6 +66,10 @@ class QAEngineer:
                 if match:
                     cleaned = match.group(1).strip()
                 plan = QATestPlan.model_validate_json(cleaned)
+                known_ids = {item.get("requirement_id") for item in requirements.get("functional_requirements", []) if isinstance(item, dict)}
+                unknown_ids = sorted({rid for case in plan.test_cases for rid in case.related_requirement_ids if rid not in known_ids})
+                if unknown_ids:
+                    raise ValueError(f"Test cases reference unknown requirement IDs: {unknown_ids}")
                 return AgentResult(
                     agent_name=self.name,
                     status="needs_review",
