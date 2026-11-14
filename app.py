@@ -141,7 +141,7 @@ if page == "Overview":
     )
     c1, c2, c3 = st.columns(3)
     c1.metric("Projects created", len(projects))
-    c2.metric("Specialist roles designed", "8")
+    c2.metric("Specialist roles designed", "9")
     c3.metric("Executable specialists", "7")
     st.subheader("Engineering workflow")
     stages = [
