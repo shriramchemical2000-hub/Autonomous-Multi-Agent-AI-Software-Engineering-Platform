@@ -176,7 +176,7 @@ class GeneratedSourceFile(BaseModel):
         import re
         from pathlib import PurePosixPath
 
-        if "\\\\" in value or value.startswith("/") or re.match(r"^[A-Za-z]:", value):
+        if "\\" in value or value.startswith("/") or re.match(r"^[A-Za-z]:", value):
             raise ValueError("Generated file paths must be relative POSIX paths.")
         parts = value.split("/")
         if any(part in {"", ".", ".."} for part in parts):
