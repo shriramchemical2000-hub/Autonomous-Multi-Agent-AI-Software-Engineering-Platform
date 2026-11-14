@@ -75,8 +75,8 @@ Configure `GEMINI_API_KEY` in the environment or a local `.env` file for real mo
 - [x] Phase 5 — Software Architect and approval-gated architecture workflow
 - [x] Phase 6 — LangGraph orchestration and approval-gated specialist hand-offs
 - [x] Phase 7 — UI/UX Designer and approval-gated product experience specification
-- [x] Phase 8 — controlled text-only source generation and human review\n- [ ] Phase 9 — isolated test execution, bounded repair, and code review
-- [ ] Phase 9 — test generation, bounded repair, and code review
+- [x] Phase 8 — controlled text-only source generation and human review
+- [ ] Phase 9 — isolated test execution, bounded repair, and code review
 - [ ] Phase 10 — delivery exports, deployment, evaluation suite, and end-to-end demo
 
 ## License
