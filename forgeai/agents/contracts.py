@@ -29,11 +29,22 @@ class AgentResult(BaseModel):
 class RequirementItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    requirement_id: str
+    requirement_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     description: str = Field(min_length=1)
     priority: Literal["must", "should", "could", "wont"] = "should"
     acceptance_criteria: list[str] = Field(default_factory=list)
+
+
+class UserStory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    story_id: str = Field(min_length=1)
+    persona: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    benefit: str = Field(min_length=1)
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    related_requirement_ids: list[str] = Field(default_factory=list)
 
 
 class RequirementsDocument(BaseModel):
@@ -42,8 +53,11 @@ class RequirementsDocument(BaseModel):
     product_name: str = Field(min_length=1)
     problem_statement: str = Field(min_length=1)
     target_users: list[str] = Field(default_factory=list)
+    scope_in: list[str] = Field(default_factory=list)
+    scope_out: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     functional_requirements: list[RequirementItem] = Field(default_factory=list)
+    user_stories: list[UserStory] = Field(default_factory=list)
     non_functional_requirements: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
 
