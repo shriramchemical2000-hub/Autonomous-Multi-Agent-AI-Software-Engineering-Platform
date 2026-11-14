@@ -24,5 +24,9 @@ jobs:
           pip install -r requirements.txt
       - name: Compile Python sources
         run: python -m compileall -q app.py forgeai tests
+      - name: Build isolated test runner image
+        run: docker build --pull -t forgeai-test-runner:py311 -f runner/Dockerfile .
       - name: Run tests
+        env:
+          FORGEAI_DOCKER_INTEGRATION: "true"
         run: pytest -q
