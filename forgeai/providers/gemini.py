@@ -33,6 +33,8 @@ class GeminiProvider:
                 model=self.settings.model_name,
                 google_api_key=self.settings.gemini_api_key,
                 temperature=temperature,
+                timeout=90,
+                max_retries=1,
             )
             response = model.invoke(
                 [
@@ -57,6 +59,10 @@ class GeminiProvider:
             raise
         except Exception as exc:
             # Avoid exposing request payloads or credentials in user-facing errors.
+            # Surface a short, credential-redacted provider message so hosted
+            # deployments show whether the failure is auth, quota, model, or timeout.
+            detail = str(exc).replace(self.settings.gemini_api_key, "[REDACTED]")
+            detail = " ".join(detail.split())[:700]
             raise ModelProviderError(
-                f"Gemini request failed ({type(exc).__name__}). Check model availability and configuration."
+                f"Gemini request failed ({type(exc).__name__}): {detail or 'No provider details returned.'}"
             ) from exc
