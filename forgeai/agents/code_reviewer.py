@@ -71,9 +71,13 @@ class CodeReviewer:
                     cleaned = match.group(1).strip()
                 review = CodeReviewDocument.model_validate_json(cleaned)
                 allowed_paths = {item.get("path") for item in bundle.get("files", []) if isinstance(item, dict)}
-                invalid_paths = sorted({item.file_path for item in review.findings if item.file_path not in allowed_paths})
+                invalid_paths = sorted(({item.file_path for item in review.findings} | set(review.reviewed_files)) - allowed_paths)
                 if invalid_paths:
-                    raise ValueError(f"Findings reference files outside the source bundle: {invalid_paths}")
+                    raise ValueError(f"Review references files outside the source bundle: {invalid_paths}")
+                line_counts = {item["path"]: len(item["content"].splitlines()) for item in bundle.get("files", []) if isinstance(item, dict)}
+                invalid_ranges = [item.finding_id for item in review.findings if item.line_end is not None and item.line_end > line_counts.get(item.file_path, 0)]
+                if invalid_ranges:
+                    raise ValueError(f"Findings contain line ranges beyond the supplied source: {invalid_ranges}")
                 return AgentResult(
                     agent_name=self.name,
                     status="needs_review",
