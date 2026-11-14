@@ -77,7 +77,7 @@ def test_qa_engineer_creates_unexecuted_traceable_plan():
 
 def test_qa_engineer_requires_requirements_and_bundle():
     provider = FakeProvider([json.dumps(PLAN)])
-    with pytest.raises(QAError, match="approved requirements"):
+    with pytest.raises(QAError, match="[Aa]pproved requirements"):
         QAEngineer(provider).run(context({"requirements": REQ}))
     assert provider.calls == []
 
