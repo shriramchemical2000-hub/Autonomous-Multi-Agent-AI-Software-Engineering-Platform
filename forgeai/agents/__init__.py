@@ -1,1 +1,1 @@
-"""Specialist agent implementations will be added in later phases."""
+"""Typed specialist-agent contracts; executable agents are added incrementally."""
