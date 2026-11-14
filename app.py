@@ -11,6 +11,8 @@ from forgeai.agents.requirements_analyst import AgentExecutionError
 from forgeai.agents.software_architect import AgentExecutionError as ArchitectExecutionError
 from forgeai.agents.uiux_designer import AgentExecutionError as UIUXExecutionError
 from forgeai.agents.code_generator import AgentExecutionError as CodeGenExecutionError
+from forgeai.agents.qa_engineer import AgentExecutionError as QAExecutionError
+from forgeai.agents.code_reviewer import AgentExecutionError as ReviewExecutionError
 from forgeai.config import get_settings
 from forgeai.database import (
     add_project_event,
@@ -64,8 +66,8 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
-    st.caption("PHASE 8 · CONTROLLED DEVELOPMENT WORKSPACE")
-    st.caption("Four executable specialists are coordinated through approval-gated LangGraph stages.")
+    st.caption("PHASE 9 · QUALITY ENGINEERING")
+    st.caption("Six executable specialists are coordinated through approval-gated LangGraph stages.")
 
 
 def render_requirements(document: dict) -> None:
@@ -139,7 +141,7 @@ if page == "Overview":
     c1, c2, c3 = st.columns(3)
     c1.metric("Projects created", len(projects))
     c2.metric("Specialist roles designed", "8")
-    c3.metric("Executable specialists", "4")
+    c3.metric("Executable specialists", "6")
     st.subheader("Engineering workflow")
     stages = [
         ("01 · Discover", "Convert the product idea into structured requirements."),
@@ -571,6 +573,122 @@ elif page == "Product Studio":
             else:
                 st.info(f"Source review decision: {code_artifact['review_status'].replace('_', ' ').title()}. {code_artifact['review_notes']}")
 
+
+
+        st.divider()
+        st.subheader("QA Engineer · Test Planning")
+        if not code_artifact or code_artifact["review_status"] != "approved" or not latest_requirements or latest_requirements["review_status"] != "approved":
+            st.info("QA planning unlocks after the latest requirements and source bundle are both human-approved.")
+        else:
+            st.caption("Creates traceable, risk-based test cases linked to requirement IDs. This phase does not execute the source code or report pass/fail results.")
+            if st.button("Generate QA test plan", type="primary", key=f"generate_qa_{selected['id']}", disabled=not settings.has_model_api_key):
+                try:
+                    workflow_result = build_forge_workflow(GeminiProvider(settings)).invoke({
+                        "project_id": selected["id"], "user_request": selected["brief"], "requested_stage": "qa",
+                        "requirements": latest_requirements["content"], "requirements_approved": True,
+                        "code_bundle": code_artifact["content"], "code_bundle_approved": True,
+                    })
+                    save_project_artifact(settings.database_path, selected["id"], "qa_test_plan", workflow_result["qa_test_plan"])
+                    add_project_event(settings.database_path, selected["id"], "qa_engineer_completed", workflow_result["summary"])
+                    st.success(workflow_result["summary"])
+                    st.rerun()
+                except (QAExecutionError, ModelProviderError, ValueError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"QA planning failed ({type(exc).__name__}). Check the app logs.")
+            qa_artifact = get_latest_project_artifact(settings.database_path, selected["id"], "qa_test_plan")
+            if qa_artifact:
+                plan = qa_artifact["content"]
+                st.markdown(f"### Test plan · Version {qa_artifact['version']}")
+                st.caption(f"Review status: {qa_artifact['review_status'].replace('_', ' ').title()} · Execution: NOT EXECUTED")
+                st.write(plan["plan_summary"])
+                for scope_item in plan["test_scope"]:
+                    st.markdown(f"- {scope_item}")
+                for case in plan["test_cases"]:
+                    with st.expander(f"{case['test_id']} · {case['title']} · {case['priority'].upper()}", expanded=True):
+                        st.write(case["objective"])
+                        st.caption(f"Type: {case['test_type']} · Automated candidate: {'Yes' if case['automation_candidate'] else 'No'}")
+                        st.caption("Requirements: " + (", ".join(case["related_requirement_ids"]) or "Not linked"))
+                        st.markdown("**Preconditions**")
+                        for item in case["preconditions"]:
+                            st.markdown(f"- {item}")
+                        st.markdown("**Steps**")
+                        for index, item in enumerate(case["steps"], 1):
+                            st.markdown(f"{index}. {item}")
+                        st.markdown("**Expected result**")
+                        st.write(case["expected_result"])
+                if plan["coverage_gaps"]:
+                    st.markdown("**Coverage gaps**")
+                    for item in plan["coverage_gaps"]:
+                        st.warning(item)
+                if qa_artifact["review_status"] == "pending":
+                    qa_notes = st.text_area("QA plan review notes", key=f"qa_notes_{qa_artifact['id']}")
+                    qa_a, qa_c = st.columns(2)
+                    with qa_a:
+                        if st.button("Approve QA plan", type="primary", key=f"approve_qa_{qa_artifact['id']}"):
+                            review_project_artifact(settings.database_path, qa_artifact["id"], "approved", qa_notes)
+                            st.rerun()
+                    with qa_c:
+                        if st.button("Request QA plan changes", key=f"changes_qa_{qa_artifact['id']}"):
+                            if not qa_notes.strip():
+                                st.error("Add review notes before requesting changes.")
+                            else:
+                                review_project_artifact(settings.database_path, qa_artifact["id"], "changes_requested", qa_notes)
+                                st.rerun()
+
+        st.divider()
+        st.subheader("Code Reviewer · Static Review")
+        if not code_artifact or code_artifact["review_status"] != "approved" or not latest_requirements or latest_requirements["review_status"] != "approved":
+            st.info("Code review unlocks after the latest requirements and source bundle are both human-approved.")
+        else:
+            st.caption("Inspects source text for evidence-backed correctness, security, reliability, and maintainability findings. No source is executed.")
+            if st.button("Run static code review", type="primary", key=f"generate_review_{selected['id']}", disabled=not settings.has_model_api_key):
+                try:
+                    workflow_result = build_forge_workflow(GeminiProvider(settings)).invoke({
+                        "project_id": selected["id"], "user_request": selected["brief"], "requested_stage": "review",
+                        "requirements": latest_requirements["content"], "requirements_approved": True,
+                        "architecture": latest_architecture["content"] if latest_architecture else {},
+                        "code_bundle": code_artifact["content"], "code_bundle_approved": True,
+                    })
+                    save_project_artifact(settings.database_path, selected["id"], "code_review", workflow_result["code_review"])
+                    add_project_event(settings.database_path, selected["id"], "code_reviewer_completed", workflow_result["summary"])
+                    st.success(workflow_result["summary"])
+                    st.rerun()
+                except (ReviewExecutionError, ModelProviderError, ValueError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"Code review failed ({type(exc).__name__}). Check the app logs.")
+            review_artifact = get_latest_project_artifact(settings.database_path, selected["id"], "code_review")
+            if review_artifact:
+                review = review_artifact["content"]
+                st.markdown(f"### Static review · Version {review_artifact['version']}")
+                st.caption(f"Review status: {review_artifact['review_status'].replace('_', ' ').title()} · AI verdict: {review['verdict'].replace('_', ' ').title()}")
+                st.write(review["review_summary"])
+                for finding in review["findings"]:
+                    with st.expander(f"{finding['finding_id']} · {finding['severity'].upper()} · {finding['file_path']}", expanded=True):
+                        st.write(finding["issue"])
+                        st.markdown(f"**Impact:** {finding['impact']}")
+                        st.markdown(f"**Recommendation:** {finding['recommendation']}")
+                        st.caption(f"Category: {finding['category']} · Confidence: {finding['confidence']} · Lines: {finding['line_start'] or 'Not specified'}–{finding['line_end'] or 'Not specified'}")
+                if review["limitations"]:
+                    st.markdown("**Review limitations**")
+                    for item in review["limitations"]:
+                        st.warning(item)
+                if review_artifact["review_status"] == "pending":
+                    review_notes = st.text_area("Code review decision notes", key=f"review_notes_{review_artifact['id']}")
+                    review_a, review_c = st.columns(2)
+                    with review_a:
+                        if st.button("Accept review report", type="primary", key=f"approve_review_{review_artifact['id']}"):
+                            review_project_artifact(settings.database_path, review_artifact["id"], "approved", review_notes)
+                            st.rerun()
+                    with review_c:
+                        if st.button("Request another review", key=f"changes_review_{review_artifact['id']}"):
+                            if not review_notes.strip():
+                                st.error("Add notes before requesting another review.")
+                            else:
+                                review_project_artifact(settings.database_path, review_artifact["id"], "changes_requested", review_notes)
+                                st.rerun()
+
     st.divider()
     st.subheader("Your projects")
     if projects:
@@ -583,7 +701,7 @@ elif page == "Product Studio":
 
 elif page == "Agent Command Center":
     st.title("Agent Command Center")
-    st.write("ForgeAI has four executable specialists coordinated by approval-gated LangGraph stages. The remaining roles are clearly marked as planned.")
+    st.write("ForgeAI has six executable specialists coordinated by approval-gated LangGraph stages. The remaining roles are clearly marked as planned.")
     agents = [
         ("Project Manager", "Coordinates workflow, dependencies, and hand-offs.", False),
         ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria.", True),
@@ -591,8 +709,8 @@ elif page == "Agent Command Center":
         ("UI/UX Designer", "Defines journeys, screen specifications, design systems, and accessibility requirements.", True),
         ("Implementation Engineer", "Generates a bounded backend/frontend source bundle from approved specifications.", True),
         ("Frontend Developer", "Builds user-facing components against agreed contracts.", False),
-        ("QA Engineer", "Creates tests, runs validation, and reports defects.", False),
-        ("Code Reviewer", "Reviews correctness, maintainability, and security risks.", False),
+        ("QA Engineer", "Creates requirement-traceable risk-based test plans; execution is not yet implemented.", True),
+        ("Code Reviewer", "Performs evidence-led static review of source text for correctness, security, and maintainability.", True),
     ]
     for start in range(0, len(agents), 2):
         left, right = st.columns(2)
@@ -617,6 +735,8 @@ elif page == "Project Memory":
             ("architecture", "System architecture"),
             ("uiux_design", "UI/UX design specification"),
             ("code_bundle", "Generated source bundle"),
+            ("qa_test_plan", "QA test plan"),
+            ("code_review", "Static code review"),
         ]:
             artifact = get_latest_project_artifact(settings.database_path, selected["id"], artifact_type)
             if artifact:
@@ -645,4 +765,4 @@ else:
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.6.0 · Four approval-gated specialists · Generated source is stored as untrusted text and is never executed by this application.")
+st.caption("ForgeAI 0.7.0 · Six approval-gated specialists · Generated source is stored as untrusted text and is never executed by this application.")
