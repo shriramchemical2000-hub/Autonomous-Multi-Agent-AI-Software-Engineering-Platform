@@ -184,3 +184,39 @@ def test_repair_stage_rejects_attempt_above_limit():
             "execution_report": {"status": "failed"}, "repair_attempt": 3,
         })
     assert provider.calls == []
+
+
+
+def test_repair_stage_creates_candidate_only_after_authorization():
+    repair_response = {
+        "repair_summary": "Correct addition.",
+        "changes": [{
+            "file_path": "src/main.py",
+            "replacement_content": "def add(a, b):\n    return a + b\n",
+            "rationale": "The implementation used subtraction.",
+            "addresses": ["failed arithmetic assertion"],
+        }],
+        "addressed_findings": ["failed arithmetic assertion"],
+        "unresolved_risks": [],
+    }
+    provider = FakeProvider([json.dumps(repair_response)])
+    bundle = {
+        "implementation_summary": "Initial",
+        "implementation_notes": [],
+        "files": [{"path": "src/main.py", "language": "python",
+                   "purpose": "math", "content": "def add(a, b):\n    return a - b\n"},
+                  {"path": "tests/test_main.py", "language": "python",
+                   "purpose": "test", "content": "def test_add(): pass\n"}],
+    }
+    result = build_forge_workflow(provider).invoke({
+        "project_id": 10, "user_request": "Repair failed addition.",
+        "requested_stage": "repair", "requirements": VALID_REQUIREMENTS,
+        "requirements_approved": True, "code_bundle": bundle,
+        "code_bundle_approved": True, "repair_authorized": True,
+        "execution_report": {"status": "failed", "output": "assertion failed"},
+        "repair_attempt": 1,
+    })
+    assert result["current_stage"] == "repair_review"
+    assert result["status"] == "awaiting_human_approval"
+    assert "return a + b" in result["code_bundle"]["files"][0]["content"]
+    assert result["code_bundle"]["files"][1]["content"] == bundle["files"][1]["content"]
