@@ -48,3 +48,16 @@ The Code Generator requires requirements, architecture, and UI/UX artifacts as u
 Each file has a safe relative POSIX path, an allowlisted text extension, a 30 KB content limit, and a bounded path depth. A bundle is limited to 30 files and 200 KB total, and duplicate paths are rejected. Hidden files, absolute paths, parent traversal, backslashes, unsupported extensions, and extra schema fields are rejected.
 
 The generated bundle is stored as a versioned `code_bundle` artifact pending human review. Streamlit displays file contents and exports a ZIP after validation. ForgeAI does not execute generated files, install dependencies, run shell commands, or write generated files into its own repository. Passing schema validation is not a security review and does not establish that generated code is safe or functional.
+
+
+## QA Engineer
+
+The QA Engineer requires approved requirements and an explicitly approved source bundle. It creates a structured, risk-based test plan with test IDs, requirement traceability, test type, priority, preconditions, steps, expected results, and automation candidacy. Coverage gaps are called out separately. The contract forces `execution_status` to `not_executed`; this agent does not run code or claim pass/fail evidence. Output is versioned and awaits human approval.
+
+## Code Reviewer
+
+The Code Reviewer requires approved requirements and an explicitly approved source bundle. It inspects only supplied source text and returns a structured verdict plus findings with severity, category, path, optional exact line range, issue, impact, recommendation, and confidence. Findings must refer to paths in the supplied bundle. It does not execute code, install dependencies, perform a live dependency audit, or claim runtime verification. The report is versioned and awaits human review.
+
+## Phase 9 safety boundary
+
+QA planning and static review are model-backed analysis, not a secure execution environment. ForgeAI does not execute generated source in the Streamlit process or on the application host. Isolated test execution and bounded repair remain unimplemented until a separately isolated, resource-limited runner is available and verified.
