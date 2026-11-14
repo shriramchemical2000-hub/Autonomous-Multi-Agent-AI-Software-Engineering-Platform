@@ -761,7 +761,7 @@ elif page == "Agent Command Center":
         ("UI/UX Designer", "Defines journeys, screen specifications, design systems, and accessibility requirements.", True),
         ("Implementation Engineer", "Generates a bounded backend/frontend source bundle from approved specifications.", True),
         ("Frontend Developer", "Builds user-facing components against agreed contracts.", False),
-        ("QA Engineer", "Creates requirement-traceable risk-based test plans; execution is not yet implemented.", True),
+        ("QA Engineer", "Creates traceable test plans; approved Python tests can run through the opt-in Docker runner.", True),
         ("Code Reviewer", "Performs evidence-led static review of source text for correctness, security, and maintainability.", True),
     ]
     for start in range(0, len(agents), 2):
@@ -789,6 +789,7 @@ elif page == "Project Memory":
             ("code_bundle", "Generated source bundle"),
             ("qa_test_plan", "QA test plan"),
             ("code_review", "Static code review"),
+            ("execution_report", "Docker test execution report"),
         ]:
             artifact = get_latest_project_artifact(settings.database_path, selected["id"], artifact_type)
             if artifact:
