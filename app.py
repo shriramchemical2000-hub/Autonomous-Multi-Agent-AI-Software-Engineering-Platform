@@ -61,7 +61,7 @@ with st.sidebar:
     )
     st.divider()
     st.caption("PHASE 7 · PRODUCT DESIGN WORKSPACE")
-    st.caption("Two specialists are coordinated through an approval-gated LangGraph workflow.")
+    st.caption("Three specialists are coordinated through an approval-gated LangGraph workflow.")
 
 
 def render_requirements(document: dict) -> None:
@@ -184,6 +184,7 @@ elif page == "Product Studio":
 
     st.divider()
     st.subheader("Requirements Analyst")
+    selected = None
     if not projects:
         st.info("Create a project workspace above to enable requirements generation.")
     else:
@@ -257,226 +258,228 @@ elif page == "Product Studio":
             else:
                 st.info(f"Human decision: {status.replace('_', ' ').title()}. {artifact['review_notes']}")
 
-    st.divider()
-    st.subheader("Software Architect")
-    approved_requirements = get_latest_project_artifact(settings.database_path, selected["id"], "requirements")
-    if not approved_requirements or approved_requirements["review_status"] != "approved":
-        st.info("The Software Architect is unlocked after you approve the Requirements Analyst specification. This approval gate prevents architecture from being built on unreviewed requirements.")
-    else:
-        st.caption("The architect uses the approved requirements as its source of truth. It proposes system components, data entities, API contracts, security considerations, design decisions, and unresolved risks.")
-        if st.button("Generate architecture", type="primary", key=f"generate_architecture_{selected['id']}", disabled=not settings.has_model_api_key):
-            with st.spinner("Software Architect is designing and validating the system architecture..."):
-                try:
-                    context = AgentContext(
-                        project_id=selected["id"],
-                        user_request=f"Create an architecture for {approved_requirements['content'].get('product_name', selected['name'])}.",
-                        prior_artifacts={"requirements": approved_requirements["content"]},
+    if selected:
+        st.divider()
+        st.subheader("Software Architect")
+        approved_requirements = get_latest_project_artifact(settings.database_path, selected["id"], "requirements")
+        if not approved_requirements or approved_requirements["review_status"] != "approved":
+            st.info("The Software Architect is unlocked after you approve the Requirements Analyst specification. This approval gate prevents architecture from being built on unreviewed requirements.")
+        else:
+            st.caption("The architect uses the approved requirements as its source of truth. It proposes system components, data entities, API contracts, security considerations, design decisions, and unresolved risks.")
+            if st.button("Generate architecture", type="primary", key=f"generate_architecture_{selected['id']}", disabled=not settings.has_model_api_key):
+                with st.spinner("Software Architect is designing and validating the system architecture..."):
+                    try:
+                        context = AgentContext(
+                            project_id=selected["id"],
+                            user_request=f"Create an architecture for {approved_requirements['content'].get('product_name', selected['name'])}.",
+                            prior_artifacts={"requirements": approved_requirements["content"]},
+                        )
+                        workflow = build_forge_workflow(GeminiProvider(settings))
+                        workflow_result = workflow.invoke({
+                            "project_id": selected["id"],
+                            "user_request": selected["brief"],
+                            "requested_stage": "architecture",
+                            "requirements": approved_requirements["content"],
+                            "requirements_approved": approved_requirements["review_status"] == "approved",
+                        })
+                        save_project_artifact(settings.database_path, selected["id"], "architecture", workflow_result["architecture"])
+                        add_project_event(settings.database_path, selected["id"], "software_architect_completed", workflow_result["summary"])
+                        st.success(workflow_result["summary"])
+                        for warning in workflow_result.get("warnings", []):
+                            st.warning(warning)
+                        st.rerun()
+                    except (AgentExecutionError, ArchitectExecutionError, ModelProviderError, ValueError) as exc:
+                        st.error(str(exc))
+                    except Exception as exc:
+                        st.error(f"Architecture generation failed ({type(exc).__name__}). Check the app logs and configuration.")
+    
+            architecture = get_latest_project_artifact(settings.database_path, selected["id"], "architecture")
+            if architecture:
+                st.markdown("### Generated system architecture")
+                st.caption(f"Version {architecture['version']} · Review status: {architecture['review_status'].replace('_', ' ').title()}")
+                design = architecture["content"]
+                st.markdown("**System overview**")
+                st.write(design["system_overview"])
+                st.markdown("### Architecture components")
+                for component in design["components"]:
+                    with st.expander(component["name"], expanded=True):
+                        st.write(component["responsibility"])
+                        st.caption("Technology: " + (component["technology"] or "Not specified"))
+                        st.caption("Dependencies: " + (", ".join(component["dependencies"]) or "None listed"))
+                st.markdown("### Data entities")
+                for entity in design["data_entities"]:
+                    st.markdown(f"- {entity}")
+                st.markdown("### API contract")
+                if design["api_endpoints"]:
+                    st.dataframe(
+                        [
+                            {
+                                "Method": endpoint["method"],
+                                "Path": endpoint["path"],
+                                "Purpose": endpoint["purpose"],
+                                "Authentication": "Required" if endpoint["authentication_required"] else "Not required",
+                            }
+                            for endpoint in design["api_endpoints"]
+                        ],
+                        use_container_width=True,
+                        hide_index=True,
                     )
-                    workflow = build_forge_workflow(GeminiProvider(settings))
-                    workflow_result = workflow.invoke({
-                        "project_id": selected["id"],
-                        "user_request": selected["brief"],
-                        "requested_stage": "architecture",
-                        "requirements": approved_requirements["content"],
-                        "requirements_approved": approved_requirements["review_status"] == "approved",
-                    })
-                    save_project_artifact(settings.database_path, selected["id"], "architecture", workflow_result["architecture"])
-                    add_project_event(settings.database_path, selected["id"], "software_architect_completed", workflow_result["summary"])
-                    st.success(workflow_result["summary"])
-                    for warning in workflow_result.get("warnings", []):
-                        st.warning(warning)
-                    st.rerun()
-                except (AgentExecutionError, ArchitectExecutionError, ModelProviderError, ValueError) as exc:
-                    st.error(str(exc))
-                except Exception as exc:
-                    st.error(f"Architecture generation failed ({type(exc).__name__}). Check the app logs and configuration.")
-
-        architecture = get_latest_project_artifact(settings.database_path, selected["id"], "architecture")
-        if architecture:
-            st.markdown("### Generated system architecture")
-            st.caption(f"Version {architecture['version']} · Review status: {architecture['review_status'].replace('_', ' ').title()}")
-            design = architecture["content"]
-            st.markdown("**System overview**")
-            st.write(design["system_overview"])
-            st.markdown("### Architecture components")
-            for component in design["components"]:
-                with st.expander(component["name"], expanded=True):
-                    st.write(component["responsibility"])
-                    st.caption("Technology: " + (component["technology"] or "Not specified"))
-                    st.caption("Dependencies: " + (", ".join(component["dependencies"]) or "None listed"))
-            st.markdown("### Data entities")
-            for entity in design["data_entities"]:
-                st.markdown(f"- {entity}")
-            st.markdown("### API contract")
-            if design["api_endpoints"]:
-                st.dataframe(
-                    [
-                        {
-                            "Method": endpoint["method"],
-                            "Path": endpoint["path"],
-                            "Purpose": endpoint["purpose"],
-                            "Authentication": "Required" if endpoint["authentication_required"] else "Not required",
-                        }
-                        for endpoint in design["api_endpoints"]
-                    ],
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            else:
-                st.caption("No API endpoints proposed.")
-            for heading, key in [
-                ("Security considerations", "security_considerations"),
-                ("Design decisions and trade-offs", "design_decisions"),
-                ("Unresolved risks", "unresolved_risks"),
-            ]:
-                st.markdown(f"### {heading}")
-                for item in design[key]:
-                    st.markdown(f"- {item}")
-            if architecture["review_status"] == "pending":
-                st.markdown("### Architecture approval")
-                architecture_notes = st.text_area("Architecture review notes (optional)", key=f"architecture_notes_{architecture['id']}")
-                approve_arch_col, change_arch_col = st.columns(2)
-                with approve_arch_col:
-                    if st.button("Approve architecture", type="primary", key=f"approve_arch_{architecture['id']}"):
-                        review_project_artifact(settings.database_path, architecture["id"], "approved", architecture_notes)
-                        st.success("Architecture approval recorded.")
-                        st.rerun()
-                with change_arch_col:
-                    if st.button("Request architecture changes", key=f"request_arch_{architecture['id']}"):
-                        if not architecture_notes.strip():
-                            st.error("Add notes describing the architecture changes needed.")
-                        else:
-                            review_project_artifact(settings.database_path, architecture["id"], "changes_requested", architecture_notes)
-                            st.warning("Architecture change request recorded. Automatic redesign is not implemented yet.")
+                else:
+                    st.caption("No API endpoints proposed.")
+                for heading, key in [
+                    ("Security considerations", "security_considerations"),
+                    ("Design decisions and trade-offs", "design_decisions"),
+                    ("Unresolved risks", "unresolved_risks"),
+                ]:
+                    st.markdown(f"### {heading}")
+                    for item in design[key]:
+                        st.markdown(f"- {item}")
+                if architecture["review_status"] == "pending":
+                    st.markdown("### Architecture approval")
+                    architecture_notes = st.text_area("Architecture review notes (optional)", key=f"architecture_notes_{architecture['id']}")
+                    approve_arch_col, change_arch_col = st.columns(2)
+                    with approve_arch_col:
+                        if st.button("Approve architecture", type="primary", key=f"approve_arch_{architecture['id']}"):
+                            review_project_artifact(settings.database_path, architecture["id"], "approved", architecture_notes)
+                            st.success("Architecture approval recorded.")
                             st.rerun()
-            else:
-                st.info(f"Architecture decision: {architecture['review_status'].replace('_', ' ').title()}. {architecture['review_notes']}")
-
-    st.divider()
-    st.subheader("UI/UX Designer")
-    approved_architecture = get_latest_project_artifact(settings.database_path, selected["id"], "architecture")
-    if (
-        not approved_requirements
-        or approved_requirements["review_status"] != "approved"
-        or not approved_architecture
-        or approved_architecture["review_status"] != "approved"
-    ):
-        st.info("The UI/UX Designer is unlocked only after both the latest requirements and architecture artifacts are approved.")
-    else:
-        st.caption("The designer converts the two approved engineering artifacts into user journeys, navigation, detailed screen specifications, reusable components, design tokens, responsive rules, and accessibility requirements.")
-        if st.button("Generate UI/UX design", type="primary", key=f"generate_uiux_{selected['id']}", disabled=not settings.has_model_api_key):
-            with st.spinner("UI/UX Designer is preparing the product experience specification..."):
-                try:
-                    workflow = build_forge_workflow(GeminiProvider(settings))
-                    workflow_result = workflow.invoke({
-                        "project_id": selected["id"],
-                        "user_request": selected["brief"],
-                        "requested_stage": "uiux",
-                        "requirements": approved_requirements["content"],
-                        "requirements_approved": approved_requirements["review_status"] == "approved",
-                        "architecture": approved_architecture["content"],
-                        "architecture_approved": approved_architecture["review_status"] == "approved",
-                    })
-                    save_project_artifact(settings.database_path, selected["id"], "uiux_design", workflow_result["uiux_design"])
-                    add_project_event(settings.database_path, selected["id"], "uiux_designer_completed", workflow_result["summary"])
-                    st.success(workflow_result["summary"])
-                    for warning in workflow_result.get("warnings", []):
-                        st.warning(warning)
-                    st.rerun()
-                except (AgentExecutionError, ArchitectExecutionError, UIUXExecutionError, ModelProviderError, ValueError) as exc:
-                    st.error(str(exc))
-                except Exception as exc:
-                    st.error(f"UI/UX design generation failed ({type(exc).__name__}). Check the app logs and configuration.")
-
-        design_artifact = get_latest_project_artifact(settings.database_path, selected["id"], "uiux_design")
-        if design_artifact:
-            design = design_artifact["content"]
-            st.markdown("### Product experience specification")
-            st.caption(f"Version {design_artifact['version']} · Review status: {design_artifact['review_status'].replace('_', ' ').title()}")
-            st.markdown("**Design overview**")
-            st.write(design["design_overview"])
-            st.markdown("### Design goals and personas")
-            for item in design["design_goals"]:
-                st.markdown(f"- {item}")
-            for item in design["personas"]:
-                st.markdown(f"- Persona: {item}")
-            st.markdown("### Navigation structure")
-            st.write(" → ".join(design["navigation_structure"]))
-            st.markdown("### User journeys")
-            for journey in design["user_journeys"]:
-                with st.expander(f"{journey['persona']} · {journey['goal']}", expanded=True):
-                    st.caption(f"Entry point: {journey['entry_point']}")
-                    for step in journey["steps"]:
-                        st.markdown(f"{step['step']}. **{step['user_action']}** — {step['system_response']}")
-                        if step["decision_or_exception"]:
-                            st.caption(f"Decision / exception: {step['decision_or_exception']}")
-                    st.success(journey["success_outcome"])
-            st.markdown("### Screen-by-screen specifications")
-            for screen in design["screen_specifications"]:
-                with st.expander(screen["screen_name"], expanded=True):
-                    st.write(screen["purpose"])
-                    st.caption(f"Primary user: {screen['primary_user']}")
-                    st.markdown("**Layout regions**")
-                    for item in screen["layout_regions"]:
-                        st.markdown(f"- {item}")
-                    st.markdown("**Key components**")
-                    for item in screen["key_components"]:
-                        st.markdown(f"- {item}")
-                    st.markdown(f"**Primary action:** {screen['primary_action']}")
-                    st.markdown("**States and feedback**")
-                    for item in screen["states_and_feedback"]:
-                        st.markdown(f"- {item}")
-                    st.markdown("**Validation and errors**")
-                    for item in screen["validation_and_errors"]:
-                        st.markdown(f"- {item}")
-            st.markdown("### Reusable UI components")
-            for component in design["reusable_components"]:
-                with st.expander(component["component_name"]):
-                    st.write(component["purpose"])
-                    st.write(component["behaviour"])
-                    for item in component["accessibility_notes"]:
-                        st.caption(item)
-            st.markdown("### Design system")
-            system = design["design_system"]
-            for heading, key in [
-                ("Colour tokens", "colour_tokens"),
-                ("Typography scale", "typography_scale"),
-                ("Spacing and layout rules", "spacing_and_layout_rules"),
-                ("Visual principles", "visual_principles"),
-                ("Responsive behaviour", None),
-                ("Accessibility requirements", None),
-                ("Usability risks", None),
-                ("Open design questions", None),
-            ]:
-                st.markdown(f"**{heading}**")
-                values = system[key] if key else design[{
-                    "Responsive behaviour": "responsive_behaviour",
-                    "Accessibility requirements": "accessibility_requirements",
-                    "Usability risks": "usability_risks",
-                    "Open design questions": "open_design_questions",
-                }[heading]]
-                for item in values:
-                    st.markdown(f"- {item}")
-            if design_artifact["review_status"] == "pending":
-                st.markdown("### Human design approval")
-                uiux_notes = st.text_area("Design review notes (optional)", key=f"uiux_notes_{design_artifact['id']}")
-                approve_uiux_col, changes_uiux_col = st.columns(2)
-                with approve_uiux_col:
-                    if st.button("Approve UI/UX design", type="primary", key=f"approve_uiux_{design_artifact['id']}"):
-                        review_project_artifact(settings.database_path, design_artifact["id"], "approved", uiux_notes)
-                        st.success("UI/UX design approval recorded.")
+                    with change_arch_col:
+                        if st.button("Request architecture changes", key=f"request_arch_{architecture['id']}"):
+                            if not architecture_notes.strip():
+                                st.error("Add notes describing the architecture changes needed.")
+                            else:
+                                review_project_artifact(settings.database_path, architecture["id"], "changes_requested", architecture_notes)
+                                st.warning("Architecture change request recorded. Automatic redesign is not implemented yet.")
+                                st.rerun()
+                else:
+                    st.info(f"Architecture decision: {architecture['review_status'].replace('_', ' ').title()}. {architecture['review_notes']}")
+    
+        st.divider()
+        st.subheader("UI/UX Designer")
+        approved_architecture = get_latest_project_artifact(settings.database_path, selected["id"], "architecture")
+        if (
+            not approved_requirements
+            or approved_requirements["review_status"] != "approved"
+            or not approved_architecture
+            or approved_architecture["review_status"] != "approved"
+        ):
+            st.info("The UI/UX Designer is unlocked only after both the latest requirements and architecture artifacts are approved.")
+        else:
+            st.caption("The designer converts the two approved engineering artifacts into user journeys, navigation, detailed screen specifications, reusable components, design tokens, responsive rules, and accessibility requirements.")
+            if st.button("Generate UI/UX design", type="primary", key=f"generate_uiux_{selected['id']}", disabled=not settings.has_model_api_key):
+                with st.spinner("UI/UX Designer is preparing the product experience specification..."):
+                    try:
+                        workflow = build_forge_workflow(GeminiProvider(settings))
+                        workflow_result = workflow.invoke({
+                            "project_id": selected["id"],
+                            "user_request": selected["brief"],
+                            "requested_stage": "uiux",
+                            "requirements": approved_requirements["content"],
+                            "requirements_approved": approved_requirements["review_status"] == "approved",
+                            "architecture": approved_architecture["content"],
+                            "architecture_approved": approved_architecture["review_status"] == "approved",
+                        })
+                        save_project_artifact(settings.database_path, selected["id"], "uiux_design", workflow_result["uiux_design"])
+                        add_project_event(settings.database_path, selected["id"], "uiux_designer_completed", workflow_result["summary"])
+                        st.success(workflow_result["summary"])
+                        for warning in workflow_result.get("warnings", []):
+                            st.warning(warning)
                         st.rerun()
-                with changes_uiux_col:
-                    if st.button("Request UI/UX changes", key=f"request_uiux_{design_artifact['id']}"):
-                        if not uiux_notes.strip():
-                            st.error("Add notes describing the design changes needed.")
-                        else:
-                            review_project_artifact(settings.database_path, design_artifact["id"], "changes_requested", uiux_notes)
-                            st.warning("Design change request recorded. Automatic redesign is not implemented yet.")
+                    except (AgentExecutionError, ArchitectExecutionError, UIUXExecutionError, ModelProviderError, ValueError) as exc:
+                        st.error(str(exc))
+                    except Exception as exc:
+                        st.error(f"UI/UX design generation failed ({type(exc).__name__}). Check the app logs and configuration.")
+    
+            design_artifact = get_latest_project_artifact(settings.database_path, selected["id"], "uiux_design")
+            if design_artifact:
+                design = design_artifact["content"]
+                st.markdown("### Product experience specification")
+                st.caption(f"Version {design_artifact['version']} · Review status: {design_artifact['review_status'].replace('_', ' ').title()}")
+                st.markdown("**Design overview**")
+                st.write(design["design_overview"])
+                st.markdown("### Design goals and personas")
+                for item in design["design_goals"]:
+                    st.markdown(f"- {item}")
+                for item in design["personas"]:
+                    st.markdown(f"- Persona: {item}")
+                st.markdown("### Navigation structure")
+                st.write(" → ".join(design["navigation_structure"]))
+                st.markdown("### User journeys")
+                for journey in design["user_journeys"]:
+                    with st.expander(f"{journey['persona']} · {journey['goal']}", expanded=True):
+                        st.caption(f"Entry point: {journey['entry_point']}")
+                        for step in journey["steps"]:
+                            st.markdown(f"{step['step']}. **{step['user_action']}** — {step['system_response']}")
+                            if step["decision_or_exception"]:
+                                st.caption(f"Decision / exception: {step['decision_or_exception']}")
+                        st.success(journey["success_outcome"])
+                st.markdown("### Screen-by-screen specifications")
+                for screen in design["screen_specifications"]:
+                    with st.expander(screen["screen_name"], expanded=True):
+                        st.write(screen["purpose"])
+                        st.caption(f"Primary user: {screen['primary_user']}")
+                        st.markdown("**Layout regions**")
+                        for item in screen["layout_regions"]:
+                            st.markdown(f"- {item}")
+                        st.markdown("**Key components**")
+                        for item in screen["key_components"]:
+                            st.markdown(f"- {item}")
+                        st.markdown(f"**Primary action:** {screen['primary_action']}")
+                        st.markdown("**States and feedback**")
+                        for item in screen["states_and_feedback"]:
+                            st.markdown(f"- {item}")
+                        st.markdown("**Validation and errors**")
+                        for item in screen["validation_and_errors"]:
+                            st.markdown(f"- {item}")
+                st.markdown("### Reusable UI components")
+                for component in design["reusable_components"]:
+                    with st.expander(component["component_name"]):
+                        st.write(component["purpose"])
+                        st.write(component["behaviour"])
+                        for item in component["accessibility_notes"]:
+                            st.caption(item)
+                st.markdown("### Design system")
+                system = design["design_system"]
+                for heading, key in [
+                    ("Colour tokens", "colour_tokens"),
+                    ("Typography scale", "typography_scale"),
+                    ("Spacing and layout rules", "spacing_and_layout_rules"),
+                    ("Visual principles", "visual_principles"),
+                    ("Responsive behaviour", None),
+                    ("Accessibility requirements", None),
+                    ("Usability risks", None),
+                    ("Open design questions", None),
+                ]:
+                    st.markdown(f"**{heading}**")
+                    values = system[key] if key else design[{
+                        "Responsive behaviour": "responsive_behaviour",
+                        "Accessibility requirements": "accessibility_requirements",
+                        "Usability risks": "usability_risks",
+                        "Open design questions": "open_design_questions",
+                    }[heading]]
+                    for item in values:
+                        st.markdown(f"- {item}")
+                if design_artifact["review_status"] == "pending":
+                    st.markdown("### Human design approval")
+                    uiux_notes = st.text_area("Design review notes (optional)", key=f"uiux_notes_{design_artifact['id']}")
+                    approve_uiux_col, changes_uiux_col = st.columns(2)
+                    with approve_uiux_col:
+                        if st.button("Approve UI/UX design", type="primary", key=f"approve_uiux_{design_artifact['id']}"):
+                            review_project_artifact(settings.database_path, design_artifact["id"], "approved", uiux_notes)
+                            st.success("UI/UX design approval recorded.")
                             st.rerun()
-            else:
-                st.info(f"Design decision: {design_artifact['review_status'].replace('_', ' ').title()}. {design_artifact['review_notes']}")
-
+                    with changes_uiux_col:
+                        if st.button("Request UI/UX changes", key=f"request_uiux_{design_artifact['id']}"):
+                            if not uiux_notes.strip():
+                                st.error("Add notes describing the design changes needed.")
+                            else:
+                                review_project_artifact(settings.database_path, design_artifact["id"], "changes_requested", uiux_notes)
+                                st.warning("Design change request recorded. Automatic redesign is not implemented yet.")
+                                st.rerun()
+                else:
+                    st.info(f"Design decision: {design_artifact['review_status'].replace('_', ' ').title()}. {design_artifact['review_notes']}")
+    
+    
     st.divider()
     st.subheader("Your projects")
     if projects:
@@ -518,11 +521,16 @@ elif page == "Project Memory":
         selected = st.selectbox("Choose a project", projects, format_func=lambda p: f"#{p['id']} · {p['name']}")
         st.subheader("Saved product brief")
         st.write(selected["brief"] or "No brief saved.")
-        artifact = get_latest_project_artifact(settings.database_path, selected["id"], "requirements")
-        if artifact:
-            st.subheader("Latest requirements artifact")
-            st.caption(f"Version {artifact['version']} · {artifact['review_status'].replace('_', ' ').title()}")
-            st.json(artifact["content"], expanded=False)
+        for artifact_type, label in [
+            ("requirements", "Requirements specification"),
+            ("architecture", "System architecture"),
+            ("uiux_design", "UI/UX design specification"),
+        ]:
+            artifact = get_latest_project_artifact(settings.database_path, selected["id"], artifact_type)
+            if artifact:
+                st.subheader(f"Latest {label}")
+                st.caption(f"Version {artifact['version']} · {artifact['review_status'].replace('_', ' ').title()} · {artifact['created_at']}")
+                st.json(artifact["content"], expanded=False)
         st.subheader("Audit history")
         events = list_project_events(settings.database_path, selected["id"])
         if events:
@@ -539,7 +547,7 @@ else:
     st.write(f"Database: {settings.database_path}")
     st.write(f"Model preference: {settings.model_name}")
     if settings.has_model_api_key:
-        st.success("A model API key is configured. The Requirements Analyst can make model requests.")
+        st.success("A model API key is configured. Implemented specialists can make model requests.")
     else:
         st.warning("No model API key configured. Add GEMINI_API_KEY to enable live generation.")
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
