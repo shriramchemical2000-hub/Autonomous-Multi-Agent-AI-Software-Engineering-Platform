@@ -39,3 +39,12 @@ SQLite stores projects, immutable artifact versions, review decisions, and audit
 ## Testing boundary
 
 Automated tests use fake providers to validate parsing, schema enforcement, bounded retries, and approval gates without external API calls. A passing CI run does not verify live Gemini credentials, quota, or provider availability.
+
+
+## Code Generator
+
+The Code Generator requires requirements, architecture, and UI/UX artifacts as upstream inputs. The LangGraph node checks all three explicit approval flags before the model is invoked. The agent creates a compact source bundle and validates it against `CodeGenerationDocument`.
+
+Each file has a safe relative POSIX path, an allowlisted text extension, a 30 KB content limit, and a bounded path depth. A bundle is limited to 30 files and 200 KB total, and duplicate paths are rejected. Hidden files, absolute paths, parent traversal, backslashes, unsupported extensions, and extra schema fields are rejected.
+
+The generated bundle is stored as a versioned `code_bundle` artifact pending human review. Streamlit displays file contents and exports a ZIP after validation. ForgeAI does not execute generated files, install dependencies, run shell commands, or write generated files into its own repository. Passing schema validation is not a security review and does not establish that generated code is safe or functional.
