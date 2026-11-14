@@ -183,10 +183,12 @@ class GeneratedSourceFile(BaseModel):
             raise ValueError("Generated file paths cannot contain empty, dot, or parent segments.")
         if any(part.startswith(".") for part in parts):
             raise ValueError("Hidden paths are not permitted in generated bundles.")
+        reserved_names = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
         if any(
-            ":" in part or part.endswith((".", " "))
-            or re.search(r"[\\x00-\\x1f]", part)
-            or re.match(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\..*)?$", part, re.IGNORECASE)
+            ":" in part
+            or part.endswith((".", " "))
+            or any(ord(character) < 32 for character in part)
+            or part.split(".", 1)[0].upper() in reserved_names
             for part in parts
         ):
             raise ValueError("Generated paths contain a Windows-reserved or invalid path segment.")
