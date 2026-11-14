@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AgentContext(BaseModel):
@@ -170,12 +170,13 @@ class GeneratedSourceFile(BaseModel):
     purpose: str = Field(min_length=1, max_length=300)
     content: str = Field(min_length=1, max_length=30000)
 
+    @field_validator("path")
     @classmethod
-    def _validate_safe_path(cls, value: str) -> str:
+    def validate_safe_path(cls, value: str) -> str:
         import re
         from pathlib import PurePosixPath
 
-        if "\\" in value or value.startswith("/") or re.match(r"^[A-Za-z]:", value):
+        if "\\\\" in value or value.startswith("/") or re.match(r"^[A-Za-z]:", value):
             raise ValueError("Generated file paths must be relative POSIX paths.")
         parts = value.split("/")
         if any(part in {"", ".", ".."} for part in parts):
@@ -190,12 +191,6 @@ class GeneratedSourceFile(BaseModel):
             raise ValueError("Generated file path is nested too deeply.")
         return value
 
-    @classmethod
-    def model_validate(cls, obj, *args, **kwargs):
-        model = super().model_validate(obj, *args, **kwargs)
-        model.path = cls._validate_safe_path(model.path)
-        return model
-
 
 class CodeGenerationDocument(BaseModel):
     """A bounded, reviewable collection of generated text source files."""
@@ -206,13 +201,13 @@ class CodeGenerationDocument(BaseModel):
     implementation_notes: list[str] = Field(default_factory=list)
     files: list[GeneratedSourceFile] = Field(min_length=1, max_length=30)
 
-    @classmethod
-    def model_validate(cls, obj, *args, **kwargs):
-        model = super().model_validate(obj, *args, **kwargs)
-        paths = [item.path for item in model.files]
+    @model_validator(mode="after")
+    def validate_bundle(self):
+        paths = [item.path for item in self.files]
         if len(paths) != len(set(paths)):
             raise ValueError("Generated bundle contains duplicate file paths.")
-        total_bytes = sum(len(item.content.encode("utf-8")) for item in model.files)
+        total_bytes = sum(len(item.content.encode("utf-8")) for item in self.files)
         if total_bytes > 200_000:
             raise ValueError("Generated bundle exceeds the 200 KB text limit.")
-        return model
+        return self
+
