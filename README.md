@@ -2,7 +2,7 @@
 
 ForgeAI is a human-supervised AI software engineering workspace designed to turn a product brief into traceable engineering deliverables through specialised agents, shared project state, validation, and human approval gates.
 
-**Current status:** Phase 5 integration. The application foundation, Gemini provider adapter, typed agent contracts, executable Requirements Analyst, executable Software Architect, Streamlit workflows, versioned artifact persistence, and human review recording are implemented. A live Gemini request still requires a user-supplied API key and has not been verified in repository CI.
+**Current status:** Phase 6 integration. The application foundation, Gemini provider adapter, typed agent contracts, executable Requirements Analyst, executable Software Architect, Streamlit workflows, versioned artifact persistence, and human review recording are implemented. A live Gemini request still requires a user-supplied API key and has not been verified in repository CI.
 
 ## Current capabilities
 - Create and persist projects in SQLite.
@@ -26,10 +26,10 @@ ForgeAI is a human-supervised AI software engineering workspace designed to turn
 7. QA Engineer — creates tests and reports defects. (Planned)
 8. Code Reviewer — checks correctness, maintainability, and security. (Planned)
 
-The two implemented specialists are bounded, schema-validated services connected through saved project artifacts and a human approval gate. The full LangGraph multi-agent workflow, automatic change-request regeneration, code generation, and isolated execution sandbox are not implemented yet.
+The two implemented specialists are now connected through a LangGraph workflow with typed shared state and explicit stage routing. Each graph invocation runs one bounded specialist stage and stops for human review; the next stage receives the approved artifact from SQLite. The graph does not claim durable LangGraph checkpointing: SQLite remains the durable project/artifact store. Automatic change-request regeneration, code generation, and isolated execution sandbox are not implemented yet.
 
 ## Technology
-Python 3.11+, Streamlit, SQLite, Pydantic, LangChain Gemini adapter, Pytest, and GitHub Actions. LangGraph orchestration is planned.
+Python 3.11+, Streamlit, SQLite, Pydantic, LangGraph, LangChain Gemini adapter, Pytest, and GitHub Actions.
 
 ## Run locally
     pip install -r requirements.txt
@@ -49,7 +49,7 @@ Generated code is untrusted input. ForgeAI does not execute generated code. Any 
 - [x] Phase 3 — first executable Requirements Analyst and bounded output validation
 - [x] Phase 4 — requirements workflow, artifact persistence, and human review
 - [x] Phase 5 — Software Architect specialist and approval-gated architecture workflow
-- [ ] Phase 6 — LangGraph orchestration and coordinated specialist hand-offs
+- [x] Phase 6 — LangGraph orchestration, shared state, and approval-gated specialist hand-offs
 - [ ] Phase 7 — controlled development workspace and code generation
 - [ ] Phase 8 — test generation, bounded repair, and code review
 - [ ] Phase 9 — extended approval gates, audit trail, and project memory
