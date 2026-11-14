@@ -148,3 +148,30 @@ def test_code_review_workflow_runs_after_approval():
     })
     assert result["code_review"]["verdict"] == "changes_required"
     assert result["status"] == "awaiting_human_approval"
+
+
+def test_qa_engineer_rejects_unknown_requirement_traceability():
+    invalid = json.loads(json.dumps(PLAN))
+    invalid["test_cases"][0]["related_requirement_ids"] = ["FR-UNKNOWN"]
+    provider = FakeProvider([json.dumps(invalid), json.dumps(invalid)])
+    with pytest.raises(QAError, match="failed validation"):
+        QAEngineer(provider).run(context())
+    assert len(provider.calls) == 2
+
+
+def test_code_reviewer_rejects_line_ranges_outside_source():
+    invalid = json.loads(json.dumps(REVIEW))
+    invalid["findings"][0]["line_end"] = 99
+    provider = FakeProvider([json.dumps(invalid), json.dumps(invalid)])
+    with pytest.raises(ReviewError, match="failed validation"):
+        CodeReviewer(provider).run(context())
+    assert len(provider.calls) == 2
+
+
+def test_code_reviewer_rejects_unlisted_reviewed_file():
+    invalid = json.loads(json.dumps(REVIEW))
+    invalid["reviewed_files"] = ["missing.py"]
+    provider = FakeProvider([json.dumps(invalid), json.dumps(invalid)])
+    with pytest.raises(ReviewError, match="failed validation"):
+        CodeReviewer(provider).run(context())
+    assert len(provider.calls) == 2
