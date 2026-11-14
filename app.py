@@ -27,6 +27,7 @@ from forgeai.database import (
 from forgeai.providers.base import ModelProviderError
 from forgeai.providers.gemini import GeminiProvider
 from forgeai.orchestration.workflow import build_forge_workflow
+from forgeai.execution.docker_runner import DockerTestRunner, docker_runner_enabled
 
 settings = get_settings()
 initialize_database(settings.database_path)
@@ -688,6 +689,57 @@ elif page == "Product Studio":
                             else:
                                 review_project_artifact(settings.database_path, review_artifact["id"], "changes_requested", review_notes)
                                 st.rerun()
+
+
+
+        st.divider()
+        st.subheader("Isolated Test Execution · Docker")
+        st.caption("Runs only Python test files already present in the human-approved source bundle. It does not install generated dependencies or execute source code in the Streamlit process.")
+        if not code_artifact or code_artifact["review_status"] != "approved":
+            st.info("Test execution is locked until the current source bundle has explicit human approval.")
+        elif not docker_runner_enabled():
+            st.warning("Docker execution is disabled by default. Enable it only on a trusted local machine or disposable VM; do not enable it on a public/shared deployment.")
+            st.code("docker build --pull -t forgeai-test-runner:py311 -f runner/Dockerfile .\n\nFORGEAI_ENABLE_DOCKER_RUNNER=true\nFORGEAI_DOCKER_IMAGE=forgeai-test-runner:py311", language="bash")
+            st.caption("Add the two environment variables to your local, uncommitted .env file and restart Streamlit.")
+        else:
+            if st.button("Execute approved test suite in Docker", type="primary", key=f"execute_tests_{selected['id']}"):
+                report = DockerTestRunner().run(
+                    code_artifact["content"],
+                    approved=(code_artifact["review_status"] == "approved"),
+                    enabled=True,
+                    timeout_seconds=60,
+                ).to_dict()
+                report["source_bundle_artifact_id"] = code_artifact["id"]
+                report["source_bundle_version"] = code_artifact["version"]
+                save_project_artifact(settings.database_path, selected["id"], "execution_report", report)
+                add_project_event(
+                    settings.database_path, selected["id"], "test_execution_attempted",
+                    f"Source bundle v{code_artifact['version']}: {report['status']} — {report['message']}",
+                )
+                st.rerun()
+
+        execution_artifact = get_latest_project_artifact(settings.database_path, selected["id"], "execution_report")
+        if execution_artifact:
+            execution = execution_artifact["content"]
+            if execution.get("source_bundle_artifact_id") != (code_artifact["id"] if code_artifact else None):
+                st.warning("The latest execution report belongs to an older source bundle version and is not evidence for the current code.")
+            else:
+                st.markdown(f"### Execution report · Version {execution_artifact['version']}")
+                st.caption(f"Source bundle version: {execution.get('source_bundle_version')} · Status: {execution['status'].replace('_', ' ').upper()}")
+                st.write(execution["message"])
+                metric_a, metric_b, metric_c = st.columns(3)
+                metric_a.metric("Exit code", execution["exit_code"] if execution["exit_code"] is not None else "—")
+                metric_b.metric("Duration", f"{execution['duration_seconds']:.2f}s")
+                metric_c.metric("Test files", len(execution["test_files"]))
+                if execution["test_files"]:
+                    st.markdown("**Executed test files**")
+                    for test_file in execution["test_files"]:
+                        st.code(test_file, language="text")
+                if execution["output"]:
+                    st.markdown("**Runner output**")
+                    st.code(execution["output"], language="text")
+                if execution["status"] in {"failed", "timed_out", "output_limit_exceeded", "runner_unavailable", "no_tests", "disabled", "invalid_bundle"}:
+                    st.warning("This result is not a successful test run. Review the message and output before proceeding.")
 
     st.divider()
     st.subheader("Your projects")
