@@ -192,7 +192,7 @@ elif page == "Product Studio":
         )
         st.caption("The analyst uses the saved project brief and returns a structured specification. Generation requires a Gemini API key.")
         if not settings.has_model_api_key:
-            st.warning("Gemini API key not configured. Add GEMINI_API_KEY to your local environment or Streamlit secrets to enable generation. No key is needed to browse the app.")
+            st.warning("Gemini API key not configured. Add GEMINI_API_KEY to your environment variables or a local .env file to enable generation. No key is needed to browse the app.")
         if st.button("Generate requirements", type="primary", disabled=not settings.has_model_api_key):
             with st.spinner("Requirements Analyst is preparing and validating the specification..."):
                 try:
@@ -313,7 +313,7 @@ else:
         st.success("A model API key is configured. The Requirements Analyst can make model requests.")
     else:
         st.warning("No model API key configured. Add GEMINI_API_KEY to enable live generation.")
-    st.caption("Credentials are read from environment variables or Streamlit secrets. Never commit secrets to GitHub.")
+    st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
 st.caption("ForgeAI 0.2.0 · Requirements Analyst integration · Generated code is never executed by this application.")
