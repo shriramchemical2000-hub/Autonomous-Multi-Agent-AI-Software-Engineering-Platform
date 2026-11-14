@@ -28,6 +28,7 @@ from forgeai.providers.base import ModelProviderError
 from forgeai.providers.gemini import GeminiProvider
 from forgeai.orchestration.workflow import build_forge_workflow
 from forgeai.execution.docker_runner import DockerTestRunner, docker_runner_enabled
+from forgeai.delivery import ARTIFACT_TYPES, build_delivery_archive, build_delivery_report
 
 settings = get_settings()
 initialize_database(settings.database_path)
@@ -63,11 +64,11 @@ with st.sidebar:
     st.caption("Autonomous Multi-Agent Software Engineering")
     page = st.radio(
         "Workspace",
-        ["Overview", "Product Studio", "Agent Command Center", "Project Memory", "Settings"],
+        ["Overview", "Product Studio", "Delivery Center", "Agent Command Center", "Project Memory", "Settings"],
         label_visibility="collapsed",
     )
     st.divider()
-    st.caption("PHASE 9 · QUALITY ENGINEERING")
+    st.caption("PHASE 10 · DELIVERY & RELEASE")
     st.caption("Seven executable specialists are coordinated through approval-gated LangGraph stages.")
 
 
@@ -853,6 +854,94 @@ elif page == "Product Studio":
     else:
         st.caption("Your project workspaces will appear here.")
 
+elif page == "Delivery Center":
+    st.title("Delivery Center")
+    st.write("Package a project's engineering evidence, inspect its delivery readiness, and export a portable hand-off archive. This does not deploy the application.")
+    if not projects:
+        st.info("Create a project in Product Studio before preparing a delivery package.")
+    else:
+        delivery_project = st.selectbox(
+            "Select a project",
+            projects,
+            format_func=lambda p: f"#{p['id']} · {p['name']}",
+            key="delivery_project",
+        )
+        delivery_artifacts = {}
+        for artifact_type in ARTIFACT_TYPES:
+            item = get_latest_project_artifact(settings.database_path, delivery_project["id"], artifact_type)
+            if item:
+                delivery_artifacts[artifact_type] = item
+        delivery_events = list_project_events(settings.database_path, delivery_project["id"])
+        delivery_report = build_delivery_report(delivery_project, delivery_artifacts, delivery_events)
+
+        score_col, evidence_col, artifact_col = st.columns(3)
+        score_col.metric("Evidence readiness", f"{delivery_report['readiness_percent']}%")
+        evidence_col.metric("Artifacts available", len(delivery_artifacts))
+        artifact_col.metric("Audit events", len(delivery_events))
+        st.progress(delivery_report["readiness_percent"] / 100)
+        st.caption("This is an evidence checklist score, not a security certification, test-coverage percentage, or production-readiness guarantee.")
+
+        st.subheader("Release evidence checklist")
+        for check in delivery_report["checks"]:
+            status_icon = "✅" if check["passed"] else "⬜"
+            st.write(f"{status_icon} **{check['label']}** · {check['weight']} points")
+        if delivery_report["blockers"]:
+            st.warning("Remaining evidence: " + "; ".join(delivery_report["blockers"]))
+        else:
+            st.success("All configured evidence checks are present for the latest saved artifacts.")
+
+        st.divider()
+        st.subheader("Artifact inventory")
+        if delivery_artifacts:
+            st.dataframe(
+                [
+                    {
+                        "Artifact": kind.replace("_", " ").title(),
+                        "Version": item["version"],
+                        "Review": item["review_status"].replace("_", " ").title(),
+                        "Created": item["created_at"],
+                    }
+                    for kind, item in sorted(delivery_artifacts.items())
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No engineering artifacts are available yet. Start with requirements generation in Product Studio.")
+
+        st.divider()
+        st.subheader("Export engineering hand-off")
+        st.write("The ZIP contains the project brief, artifact JSON with review states, readiness report, audit events, and generated source files when available.")
+        try:
+            archive_bytes = build_delivery_archive(delivery_project, delivery_artifacts, delivery_events, delivery_report)
+            safe_name = "".join(ch.lower() if ch.isalnum() else "-" for ch in delivery_project["name"]).strip("-") or "forgeai-project"
+            st.download_button(
+                "Download complete delivery package",
+                data=archive_bytes,
+                file_name=f"{safe_name}-forgeai-delivery.zip",
+                mime="application/zip",
+                type="primary",
+                key=f"delivery_zip_{delivery_project['id']}",
+            )
+            st.download_button(
+                "Download readiness report (JSON)",
+                data=json.dumps(delivery_report, indent=2, ensure_ascii=False),
+                file_name=f"{safe_name}-readiness-report.json",
+                mime="application/json",
+                key=f"delivery_report_{delivery_project['id']}",
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            st.error(f"Delivery package could not be prepared: {exc}")
+
+        st.divider()
+        st.subheader("Deployment status")
+        st.warning("NOT DEPLOYED — ForgeAI prepares the hand-off package but does not publish or provision infrastructure.")
+        st.write("The current app uses SQLite. Before hosting real projects, implement durable managed storage, authentication, access controls, backups, secrets management, monitoring, and a staging/rollback process.")
+        st.markdown(
+            "[Deployment preparation guide](https://github.com/shriramchemical2000-hub/Autonomous-Multi-Agent-AI-Software-Engineering-Platform/blob/main/docs/DEPLOYMENT_GUIDE.md) · "
+            "[Evaluation protocol](https://github.com/shriramchemical2000-hub/Autonomous-Multi-Agent-AI-Software-Engineering-Platform/blob/main/docs/EVALUATION_PROTOCOL.md)"
+        )
+
 elif page == "Agent Command Center":
     st.title("Agent Command Center")
     st.write("ForgeAI has seven executable specialists coordinated by approval-gated LangGraph stages. The remaining roles are clearly marked as planned.")
@@ -921,4 +1010,4 @@ else:
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.8.0 · Seven approval-gated specialists · Generated source is stored as untrusted text and is executed only by the opt-in Docker runner.")
+st.caption("ForgeAI 1.0.0 · Seven approval-gated specialists · Evidence-based delivery exports · Deployment remains operator-controlled.")
