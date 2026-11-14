@@ -2,7 +2,7 @@
 
 ForgeAI is a human-supervised AI software engineering workspace that turns a product brief into traceable engineering deliverables through specialist agents, structured validation, a shared LangGraph workflow, versioned artifacts, and explicit human approval gates.
 
-**Current status: Phase 9C bounded repair proposals are implemented with human approval and regression reruns; delivery remains pending.** Six specialists are executable: Requirements Analyst, Software Architect, UI/UX Designer, Code Generator, QA Engineer, and Code Reviewer. The application has automated unit tests for their contracts and workflow gates. A live Gemini request still requires a user-supplied API key and has not been verified by repository CI.
+**Current status: Phase 9C bounded repair proposals are implemented with human approval and regression reruns; delivery remains pending.** Seven specialists are executable: Requirements Analyst, Software Architect, UI/UX Designer, Code Generator, QA Engineer, Code Reviewer, and Code Repair Engineer. The application has automated unit tests for their contracts and workflow gates. A live Gemini request still requires a user-supplied API key and has not been verified by repository CI.
 
 ## Current capabilities
 
@@ -36,10 +36,11 @@ ForgeAI is a human-supervised AI software engineering workspace that turns a pro
 6. Frontend Developer — builds user-facing components against approved design and API contracts. **Planned**
 7. QA Engineer — creates requirement-traceable risk-based test plans; it does not execute tests. **Implemented**
 8. Code Reviewer — performs static source review and reports evidence-backed findings. **Implemented**
+9. Code Repair Engineer — proposes bounded replacements for existing non-test source files using failed execution output or current-source review findings. **Implemented**
 
 ## Orchestration and approval model
 
-The six implemented specialists are routed through a LangGraph state graph. Each invocation executes one bounded stage and ends for human review:
+The seven implemented specialists are routed through a LangGraph state graph. Each invocation executes one bounded stage and ends for human review:
 
 1. Requirements Analyst runs on the saved product brief; its artifact must be approved.
 2. Software Architect receives the approved requirements; its artifact must be approved.
