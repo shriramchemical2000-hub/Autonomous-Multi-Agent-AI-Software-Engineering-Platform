@@ -17,6 +17,10 @@ class ForgeWorkflowState(TypedDict, total=False):
     code_bundle_approved: bool
     qa_test_plan: dict[str, Any]
     code_review: dict[str, Any]
+    execution_report: dict[str, Any]
+    repair_proposal: dict[str, Any]
+    repair_attempt: int
+    repair_authorized: bool
     task_plan: list[dict[str, Any]]
     artifacts: list[dict[str, Any]]
     test_results: list[dict[str, Any]]
