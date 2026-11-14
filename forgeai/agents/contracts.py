@@ -158,3 +158,61 @@ class UIUXDesignDocument(BaseModel):
     accessibility_requirements: list[str] = Field(default_factory=list)
     usability_risks: list[str] = Field(default_factory=list)
     open_design_questions: list[str] = Field(default_factory=list)
+
+
+class GeneratedSourceFile(BaseModel):
+    """One plain-text source file; paths are constrained before export."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, max_length=180)
+    language: str = Field(min_length=1, max_length=40)
+    purpose: str = Field(min_length=1, max_length=300)
+    content: str = Field(min_length=1, max_length=30000)
+
+    @classmethod
+    def _validate_safe_path(cls, value: str) -> str:
+        import re
+        from pathlib import PurePosixPath
+
+        if "\\" in value or value.startswith("/") or re.match(r"^[A-Za-z]:", value):
+            raise ValueError("Generated file paths must be relative POSIX paths.")
+        parts = value.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("Generated file paths cannot contain empty, dot, or parent segments.")
+        if any(part.startswith(".") for part in parts):
+            raise ValueError("Hidden paths are not permitted in generated bundles.")
+        allowed_suffixes = {".py", ".html", ".css", ".js", ".ts", ".tsx", ".jsx", ".json", ".md", ".yaml", ".yml", ".toml"}
+        suffix = PurePosixPath(value).suffix.lower()
+        if suffix not in allowed_suffixes:
+            raise ValueError(f"Unsupported generated file type: {suffix or 'no extension'}.")
+        if len(parts) > 6:
+            raise ValueError("Generated file path is nested too deeply.")
+        return value
+
+    @classmethod
+    def model_validate(cls, obj, *args, **kwargs):
+        model = super().model_validate(obj, *args, **kwargs)
+        model.path = cls._validate_safe_path(model.path)
+        return model
+
+
+class CodeGenerationDocument(BaseModel):
+    """A bounded, reviewable collection of generated text source files."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    implementation_summary: str = Field(min_length=1)
+    implementation_notes: list[str] = Field(default_factory=list)
+    files: list[GeneratedSourceFile] = Field(min_length=1, max_length=30)
+
+    @classmethod
+    def model_validate(cls, obj, *args, **kwargs):
+        model = super().model_validate(obj, *args, **kwargs)
+        paths = [item.path for item in model.files]
+        if len(paths) != len(set(paths)):
+            raise ValueError("Generated bundle contains duplicate file paths.")
+        total_bytes = sum(len(item.content.encode("utf-8")) for item in model.files)
+        if total_bytes > 200_000:
+            raise ValueError("Generated bundle exceeds the 200 KB text limit.")
+        return model
