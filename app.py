@@ -1,12 +1,16 @@
 """ForgeAI — human-supervised AI software engineering workspace."""
 from __future__ import annotations
 
+import io
+import zipfile
+
 import streamlit as st
 
 from forgeai.agents.contracts import AgentContext
 from forgeai.agents.requirements_analyst import AgentExecutionError
 from forgeai.agents.software_architect import AgentExecutionError as ArchitectExecutionError
 from forgeai.agents.uiux_designer import AgentExecutionError as UIUXExecutionError
+from forgeai.agents.code_generator import AgentExecutionError as CodeGenExecutionError
 from forgeai.config import get_settings
 from forgeai.database import (
     add_project_event,
@@ -60,8 +64,8 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
-    st.caption("PHASE 7 · PRODUCT DESIGN WORKSPACE")
-    st.caption("Three specialists are coordinated through an approval-gated LangGraph workflow.")
+    st.caption("PHASE 8 · CONTROLLED DEVELOPMENT WORKSPACE")
+    st.caption("Four executable specialists are coordinated through approval-gated LangGraph stages.")
 
 
 def render_requirements(document: dict) -> None:
@@ -135,7 +139,7 @@ if page == "Overview":
     c1, c2, c3 = st.columns(3)
     c1.metric("Projects created", len(projects))
     c2.metric("Specialist roles designed", "8")
-    c3.metric("Executable specialists", "3")
+    c3.metric("Executable specialists", "4")
     st.subheader("Engineering workflow")
     stages = [
         ("01 · Discover", "Convert the product idea into structured requirements."),
@@ -164,7 +168,7 @@ if page == "Overview":
 
 elif page == "Product Studio":
     st.title("Product Studio")
-    st.write("Create a project, generate an implementation-ready requirements specification, and review it before architecture begins.")
+    st.write("Move a product from requirements through architecture and experience design into a reviewable source-code bundle. Every downstream stage is approval-gated.")
     with st.form("new_project_form", clear_on_submit=True):
         name = st.text_input("Project name", placeholder="e.g. Hospital Appointment Platform")
         brief = st.text_area(
@@ -480,6 +484,93 @@ elif page == "Product Studio":
                     st.info(f"Design decision: {design_artifact['review_status'].replace('_', ' ').title()}. {design_artifact['review_notes']}")
     
     
+        st.divider()
+        st.subheader("Controlled Code Generator")
+        latest_requirements = get_latest_project_artifact(settings.database_path, selected["id"], "requirements")
+        latest_architecture = get_latest_project_artifact(settings.database_path, selected["id"], "architecture")
+        latest_uiux = get_latest_project_artifact(settings.database_path, selected["id"], "uiux_design")
+        upstream_ready = all([
+            latest_requirements and latest_requirements["review_status"] == "approved",
+            latest_architecture and latest_architecture["review_status"] == "approved",
+            latest_uiux and latest_uiux["review_status"] == "approved",
+        ])
+        if not upstream_ready:
+            st.info("Code generation unlocks only after the latest requirements, architecture, and UI/UX design artifacts are all approved.")
+        else:
+            st.caption("The generator creates a bounded, text-only source bundle from all three approved artifacts. It does not write to the repository, run code, install dependencies, or execute tests.")
+            if st.button("Generate source code bundle", type="primary", key=f"generate_code_{selected['id']}", disabled=not settings.has_model_api_key):
+                with st.spinner("Code Generator is creating and validating a bounded source bundle..."):
+                    try:
+                        workflow = build_forge_workflow(GeminiProvider(settings))
+                        workflow_result = workflow.invoke({
+                            "project_id": selected["id"],
+                            "user_request": selected["brief"],
+                            "requested_stage": "codegen",
+                            "requirements": latest_requirements["content"],
+                            "requirements_approved": True,
+                            "architecture": latest_architecture["content"],
+                            "architecture_approved": True,
+                            "uiux_design": latest_uiux["content"],
+                            "uiux_approved": True,
+                        })
+                        bundle_id = save_project_artifact(
+                            settings.database_path, selected["id"], "code_bundle", workflow_result["code_bundle"]
+                        )
+                        add_project_event(settings.database_path, selected["id"], "code_generator_completed", workflow_result["summary"])
+                        st.session_state["forgeai_last_code_bundle_id"] = bundle_id
+                        st.success(workflow_result["summary"])
+                        for warning in workflow_result.get("warnings", []):
+                            st.warning(warning)
+                        st.rerun()
+                    except (AgentExecutionError, ArchitectExecutionError, UIUXExecutionError, CodeGenExecutionError, ModelProviderError, ValueError) as exc:
+                        st.error(str(exc))
+                    except Exception as exc:
+                        st.error(f"Code generation failed ({type(exc).__name__}). Check the app logs and configuration.")
+
+        code_artifact = get_latest_project_artifact(settings.database_path, selected["id"], "code_bundle")
+        if code_artifact:
+            bundle = code_artifact["content"]
+            st.markdown("### Generated source bundle")
+            st.caption(f"Version {code_artifact['version']} · {len(bundle['files'])} files · Review status: {code_artifact['review_status'].replace('_', ' ').title()}")
+            st.write(bundle["implementation_summary"])
+            for note in bundle["implementation_notes"]:
+                st.markdown(f"- {note}")
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for source_file in bundle["files"]:
+                    archive.writestr(source_file["path"], source_file["content"])
+            st.download_button(
+                "Download source bundle (.zip)",
+                data=zip_buffer.getvalue(),
+                file_name=f"forgeai-project-{selected['id']}-code-v{code_artifact['version']}.zip",
+                mime="application/zip",
+                key=f"download_code_{code_artifact['id']}",
+            )
+            for source_file in bundle["files"]:
+                with st.expander(f"{source_file['path']} · {source_file['language']}"):
+                    st.caption(source_file["purpose"])
+                    st.code(source_file["content"], language=source_file["language"] if source_file["language"] in {"python", "javascript", "typescript", "html", "css", "json", "yaml", "toml", "markdown"} else "text")
+            if code_artifact["review_status"] == "pending":
+                st.markdown("### Human source review")
+                st.warning("Treat these files as untrusted. Inspect them before downloading or running locally. ForgeAI has not executed or tested them.")
+                code_notes = st.text_area("Source review notes (optional)", key=f"code_notes_{code_artifact['id']}")
+                approve_code_col, changes_code_col = st.columns(2)
+                with approve_code_col:
+                    if st.button("Approve source bundle", type="primary", key=f"approve_code_{code_artifact['id']}"):
+                        review_project_artifact(settings.database_path, code_artifact["id"], "approved", code_notes)
+                        st.success("Source bundle approval recorded.")
+                        st.rerun()
+                with changes_code_col:
+                    if st.button("Request code changes", key=f"request_code_{code_artifact['id']}"):
+                        if not code_notes.strip():
+                            st.error("Add notes describing the code changes needed.")
+                        else:
+                            review_project_artifact(settings.database_path, code_artifact["id"], "changes_requested", code_notes)
+                            st.warning("Code change request recorded. Automatic repair and regeneration are not implemented.")
+                            st.rerun()
+            else:
+                st.info(f"Source review decision: {code_artifact['review_status'].replace('_', ' ').title()}. {code_artifact['review_notes']}")
+
     st.divider()
     st.subheader("Your projects")
     if projects:
@@ -492,13 +583,13 @@ elif page == "Product Studio":
 
 elif page == "Agent Command Center":
     st.title("Agent Command Center")
-    st.write("ForgeAI has three executable specialists coordinated by a LangGraph workflow. The remaining roles are clearly marked as planned.")
+    st.write("ForgeAI has four executable specialists coordinated by approval-gated LangGraph stages. The remaining roles are clearly marked as planned.")
     agents = [
         ("Project Manager", "Coordinates workflow, dependencies, and hand-offs.", False),
         ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria.", True),
         ("Software Architect", "Designs components, data models, and API contracts from approved requirements.", True),
         ("UI/UX Designer", "Defines journeys, screen specifications, design systems, and accessibility requirements.", True),
-        ("Backend Developer", "Implements approved services and business logic.", False),
+        ("Implementation Engineer", "Generates a bounded backend/frontend source bundle from approved specifications.", True),
         ("Frontend Developer", "Builds user-facing components against agreed contracts.", False),
         ("QA Engineer", "Creates tests, runs validation, and reports defects.", False),
         ("Code Reviewer", "Reviews correctness, maintainability, and security risks.", False),
@@ -525,6 +616,7 @@ elif page == "Project Memory":
             ("requirements", "Requirements specification"),
             ("architecture", "System architecture"),
             ("uiux_design", "UI/UX design specification"),
+            ("code_bundle", "Generated source bundle"),
         ]:
             artifact = get_latest_project_artifact(settings.database_path, selected["id"], artifact_type)
             if artifact:
@@ -553,4 +645,4 @@ else:
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.5.0 · LangGraph-coordinated Requirements Analyst + Software Architect + UI/UX Designer · Generated code is never executed by this application.")
+st.caption("ForgeAI 0.6.0 · Four approval-gated specialists · Generated source is stored as untrusted text and is never executed by this application.")
