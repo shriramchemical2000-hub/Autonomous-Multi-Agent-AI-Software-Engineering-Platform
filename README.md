@@ -13,7 +13,7 @@ ForgeAI is a human-supervised AI software engineering workspace designed to turn
 - Record explicit human approval or change-request decisions and review notes.
 - Maintain an audit event history for project creation, artifact generation, and human review.
 - Browse saved artifacts and audit history in Project Memory.
-- Configure Gemini through environment variables or Streamlit secrets without requiring a key to browse the app.
+- Configure Gemini through environment variables or a local .env file without requiring a key to browse the app.
 
 ## Planned specialist team
 1. Project Manager — coordinates workflow and dependencies.
@@ -40,7 +40,7 @@ Run tests with:
 
     pytest -q
 
-Configure GEMINI_API_KEY in the environment or Streamlit secrets to make real model requests. Never commit .env files, API keys, access tokens, or production data. The application can be browsed and project records can be created without a key; live generation requires one and is subject to Gemini availability and quota.
+Configure GEMINI_API_KEY in the environment or a local .env file to make real model requests. Never commit .env files, API keys, access tokens, or production data. The application can be browsed and project records can be created without a key; live generation requires one and is subject to Gemini availability and quota.
 
 ## Safety
 Generated code is untrusted input. ForgeAI does not execute generated code. Any future execution service must use an isolated, resource-limited sandbox, network disabled by default, no access to host secrets, and explicit human approval.
