@@ -19,7 +19,7 @@ from forgeai.providers.base import ModelProvider
 def _route_entry(state: ForgeWorkflowState) -> Literal["requirements", "architecture", "uiux", "codegen", "qa", "review"]:
     requested = state.get("requested_stage")
     if requested not in {"requirements", "architecture", "uiux", "codegen", "qa", "review"}:
-        raise ValueError("requested_stage must be 'requirements', 'architecture', 'uiux', or 'codegen'.")
+        raise ValueError("requested_stage must be one of requirements, architecture, uiux, codegen, qa, or review.")
     return requested  # type: ignore[return-value]
 
 
