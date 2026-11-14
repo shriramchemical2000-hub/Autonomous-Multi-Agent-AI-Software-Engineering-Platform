@@ -10,6 +10,8 @@ class ForgeWorkflowState(TypedDict, total=False):
     requirements: dict[str, Any]
     requirements_approved: bool
     architecture: dict[str, Any]
+    architecture_approved: bool
+    uiux_design: dict[str, Any]
     task_plan: list[dict[str, Any]]
     artifacts: list[dict[str, Any]]
     test_results: list[dict[str, Any]]
