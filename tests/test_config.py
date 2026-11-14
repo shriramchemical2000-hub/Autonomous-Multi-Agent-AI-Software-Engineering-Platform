@@ -9,4 +9,4 @@ def test_settings_have_safe_defaults(monkeypatch):
     assert str(settings.database_path) == "data/forgeai.db"
     assert settings.gemini_api_key == ""
     assert settings.has_model_api_key is False
-    assert settings.model_name
+    assert settings.model_name == "gemini-3.8-flash"
