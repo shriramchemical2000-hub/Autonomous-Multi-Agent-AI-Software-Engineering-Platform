@@ -1,0 +1,35 @@
+"""Application configuration with safe development defaults."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover
+    load_dotenv = None
+
+
+@dataclass(frozen=True)
+class Settings:
+    environment: str
+    database_path: Path
+    gemini_api_key: str
+    model_name: str
+
+    @property
+    def has_model_api_key(self) -> bool:
+        return bool(self.gemini_api_key.strip())
+
+
+def get_settings() -> Settings:
+    """Load settings from environment variables and an optional .env file."""
+    if load_dotenv is not None:
+        load_dotenv()
+    return Settings(
+        environment=os.getenv("FORGEAI_ENV", "development").strip() or "development",
+        database_path=Path(os.getenv("FORGEAI_DB_PATH", "data/forgeai.db")),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        model_name=os.getenv("FORGEAI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash",
+    )
