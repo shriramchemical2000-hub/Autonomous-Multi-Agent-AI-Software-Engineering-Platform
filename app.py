@@ -285,7 +285,7 @@ elif page == "Product Studio":
                     for warning in workflow_result.get("warnings", []):
                         st.warning(warning)
                     st.rerun()
-                except (AgentExecutionError, ModelProviderError) as exc:
+                except (AgentExecutionError, ArchitectExecutionError, ModelProviderError, ValueError) as exc:
                     st.error(str(exc))
                 except Exception as exc:
                     st.error(f"Architecture generation failed ({type(exc).__name__}). Check the app logs and configuration.")
