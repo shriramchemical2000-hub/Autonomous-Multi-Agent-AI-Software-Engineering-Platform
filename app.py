@@ -6,6 +6,7 @@ import streamlit as st
 from forgeai.agents.contracts import AgentContext
 from forgeai.agents.requirements_analyst import AgentExecutionError
 from forgeai.agents.software_architect import AgentExecutionError as ArchitectExecutionError
+from forgeai.agents.uiux_designer import AgentExecutionError as UIUXExecutionError
 from forgeai.config import get_settings
 from forgeai.database import (
     add_project_event,
@@ -59,7 +60,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
-    st.caption("PHASE 5 · ARCHITECTURE WORKSPACE")
+    st.caption("PHASE 7 · PRODUCT DESIGN WORKSPACE")
     st.caption("Two specialists are coordinated through an approval-gated LangGraph workflow.")
 
 
@@ -134,7 +135,7 @@ if page == "Overview":
     c1, c2, c3 = st.columns(3)
     c1.metric("Projects created", len(projects))
     c2.metric("Specialist roles designed", "8")
-    c3.metric("Executable specialists", "2")
+    c3.metric("Executable specialists", "3")
     st.subheader("Engineering workflow")
     stages = [
         ("01 · Discover", "Convert the product idea into structured requirements."),
@@ -222,7 +223,7 @@ elif page == "Product Studio":
                     for warning in workflow_result.get("warnings", []):
                         st.warning(warning)
                     st.rerun()
-                except (AgentExecutionError, ArchitectExecutionError, ModelProviderError, ValueError) as exc:
+                except (AgentExecutionError, ArchitectExecutionError, UIUXExecutionError, ModelProviderError, ValueError) as exc:
                     st.error(str(exc))
                 except Exception as exc:
                     st.error(f"Requirements generation failed ({type(exc).__name__}). Check the app logs and configuration.")
@@ -352,6 +353,131 @@ elif page == "Product Studio":
                 st.info(f"Architecture decision: {architecture['review_status'].replace('_', ' ').title()}. {architecture['review_notes']}")
 
     st.divider()
+    st.subheader("UI/UX Designer")
+    approved_architecture = get_latest_project_artifact(settings.database_path, selected["id"], "architecture")
+    if (
+        not approved_requirements
+        or approved_requirements["review_status"] != "approved"
+        or not approved_architecture
+        or approved_architecture["review_status"] != "approved"
+    ):
+        st.info("The UI/UX Designer is unlocked only after both the latest requirements and architecture artifacts are approved.")
+    else:
+        st.caption("The designer converts the two approved engineering artifacts into user journeys, navigation, detailed screen specifications, reusable components, design tokens, responsive rules, and accessibility requirements.")
+        if st.button("Generate UI/UX design", type="primary", key=f"generate_uiux_{selected['id']}", disabled=not settings.has_model_api_key):
+            with st.spinner("UI/UX Designer is preparing the product experience specification..."):
+                try:
+                    workflow = build_forge_workflow(GeminiProvider(settings))
+                    workflow_result = workflow.invoke({
+                        "project_id": selected["id"],
+                        "user_request": selected["brief"],
+                        "requested_stage": "uiux",
+                        "requirements": approved_requirements["content"],
+                        "requirements_approved": approved_requirements["review_status"] == "approved",
+                        "architecture": approved_architecture["content"],
+                        "architecture_approved": approved_architecture["review_status"] == "approved",
+                    })
+                    save_project_artifact(settings.database_path, selected["id"], "uiux_design", workflow_result["uiux_design"])
+                    add_project_event(settings.database_path, selected["id"], "uiux_designer_completed", workflow_result["summary"])
+                    st.success(workflow_result["summary"])
+                    for warning in workflow_result.get("warnings", []):
+                        st.warning(warning)
+                    st.rerun()
+                except (AgentExecutionError, ArchitectExecutionError, UIUXExecutionError, ModelProviderError, ValueError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"UI/UX design generation failed ({type(exc).__name__}). Check the app logs and configuration.")
+
+        design_artifact = get_latest_project_artifact(settings.database_path, selected["id"], "uiux_design")
+        if design_artifact:
+            design = design_artifact["content"]
+            st.markdown("### Product experience specification")
+            st.caption(f"Version {design_artifact['version']} · Review status: {design_artifact['review_status'].replace('_', ' ').title()}")
+            st.markdown("**Design overview**")
+            st.write(design["design_overview"])
+            st.markdown("### Design goals and personas")
+            for item in design["design_goals"]:
+                st.markdown(f"- {item}")
+            for item in design["personas"]:
+                st.markdown(f"- Persona: {item}")
+            st.markdown("### Navigation structure")
+            st.write(" → ".join(design["navigation_structure"]))
+            st.markdown("### User journeys")
+            for journey in design["user_journeys"]:
+                with st.expander(f"{journey['persona']} · {journey['goal']}", expanded=True):
+                    st.caption(f"Entry point: {journey['entry_point']}")
+                    for step in journey["steps"]:
+                        st.markdown(f"{step['step']}. **{step['user_action']}** — {step['system_response']}")
+                        if step["decision_or_exception"]:
+                            st.caption(f"Decision / exception: {step['decision_or_exception']}")
+                    st.success(journey["success_outcome"])
+            st.markdown("### Screen-by-screen specifications")
+            for screen in design["screen_specifications"]:
+                with st.expander(screen["screen_name"], expanded=True):
+                    st.write(screen["purpose"])
+                    st.caption(f"Primary user: {screen['primary_user']}")
+                    st.markdown("**Layout regions**")
+                    for item in screen["layout_regions"]:
+                        st.markdown(f"- {item}")
+                    st.markdown("**Key components**")
+                    for item in screen["key_components"]:
+                        st.markdown(f"- {item}")
+                    st.markdown(f"**Primary action:** {screen['primary_action']}")
+                    st.markdown("**States and feedback**")
+                    for item in screen["states_and_feedback"]:
+                        st.markdown(f"- {item}")
+                    st.markdown("**Validation and errors**")
+                    for item in screen["validation_and_errors"]:
+                        st.markdown(f"- {item}")
+            st.markdown("### Reusable UI components")
+            for component in design["reusable_components"]:
+                with st.expander(component["component_name"]):
+                    st.write(component["purpose"])
+                    st.write(component["behaviour"])
+                    for item in component["accessibility_notes"]:
+                        st.caption(item)
+            st.markdown("### Design system")
+            system = design["design_system"]
+            for heading, key in [
+                ("Colour tokens", "colour_tokens"),
+                ("Typography scale", "typography_scale"),
+                ("Spacing and layout rules", "spacing_and_layout_rules"),
+                ("Visual principles", "visual_principles"),
+                ("Responsive behaviour", None),
+                ("Accessibility requirements", None),
+                ("Usability risks", None),
+                ("Open design questions", None),
+            ]:
+                st.markdown(f"**{heading}**")
+                values = system[key] if key else design[{
+                    "Responsive behaviour": "responsive_behaviour",
+                    "Accessibility requirements": "accessibility_requirements",
+                    "Usability risks": "usability_risks",
+                    "Open design questions": "open_design_questions",
+                }[heading]]
+                for item in values:
+                    st.markdown(f"- {item}")
+            if design_artifact["review_status"] == "pending":
+                st.markdown("### Human design approval")
+                uiux_notes = st.text_area("Design review notes (optional)", key=f"uiux_notes_{design_artifact['id']}")
+                approve_uiux_col, changes_uiux_col = st.columns(2)
+                with approve_uiux_col:
+                    if st.button("Approve UI/UX design", type="primary", key=f"approve_uiux_{design_artifact['id']}"):
+                        review_project_artifact(settings.database_path, design_artifact["id"], "approved", uiux_notes)
+                        st.success("UI/UX design approval recorded.")
+                        st.rerun()
+                with changes_uiux_col:
+                    if st.button("Request UI/UX changes", key=f"request_uiux_{design_artifact['id']}"):
+                        if not uiux_notes.strip():
+                            st.error("Add notes describing the design changes needed.")
+                        else:
+                            review_project_artifact(settings.database_path, design_artifact["id"], "changes_requested", uiux_notes)
+                            st.warning("Design change request recorded. Automatic redesign is not implemented yet.")
+                            st.rerun()
+            else:
+                st.info(f"Design decision: {design_artifact['review_status'].replace('_', ' ').title()}. {design_artifact['review_notes']}")
+
+    st.divider()
     st.subheader("Your projects")
     if projects:
         for project in projects:
@@ -363,12 +489,12 @@ elif page == "Product Studio":
 
 elif page == "Agent Command Center":
     st.title("Agent Command Center")
-    st.write("ForgeAI has two executable specialists coordinated by a LangGraph workflow. The remaining roles are clearly marked as planned.")
+    st.write("ForgeAI has three executable specialists coordinated by a LangGraph workflow. The remaining roles are clearly marked as planned.")
     agents = [
         ("Project Manager", "Coordinates workflow, dependencies, and hand-offs.", False),
         ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria.", True),
         ("Software Architect", "Designs components, data models, and API contracts from approved requirements.", True),
-        ("UI/UX Designer", "Defines journeys, interaction patterns, and screen specifications.", False),
+        ("UI/UX Designer", "Defines journeys, screen specifications, design systems, and accessibility requirements.", True),
         ("Backend Developer", "Implements approved services and business logic.", False),
         ("Frontend Developer", "Builds user-facing components against agreed contracts.", False),
         ("QA Engineer", "Creates tests, runs validation, and reports defects.", False),
@@ -419,4 +545,4 @@ else:
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.4.0 · LangGraph-coordinated Requirements Analyst + Software Architect · Generated code is never executed by this application.")
+st.caption("ForgeAI 0.5.0 · LangGraph-coordinated Requirements Analyst + Software Architect + UI/UX Designer · Generated code is never executed by this application.")
