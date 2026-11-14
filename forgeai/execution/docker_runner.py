@@ -65,6 +65,10 @@ def _write_bundle(bundle: CodeGenerationDocument, destination: Path) -> None:
         if root not in (resolved_parent, *resolved_parent.parents):
             raise ValueError("A generated file path escaped the temporary workspace.")
         target.write_text(item.content, encoding="utf-8")
+    # The container runs as UID 65534; make the read-only bind mount traversable.
+    for entry in sorted(destination.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        entry.chmod(0o755 if entry.is_dir() else 0o644)
+    destination.chmod(0o755)
 
 
 def _read_output(process: subprocess.Popen, limit: int, state: dict[str, Any]) -> None:
@@ -138,7 +142,7 @@ class DockerTestRunner:
             "--network=none", "--read-only",
             "--cap-drop=ALL", "--security-opt=no-new-privileges",
             "--pids-limit=64", "--memory=256m", "--memory-swap=256m",
-            "--cpus=1.0", "--ulimit", "nofile=256:256",
+            "--cpus=1.0", "--shm-size=16m", "--ulimit", "nofile=256:256",
             "--user=65534:65534",
             "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m",
             "--env", "HOME=/tmp",
@@ -191,10 +195,14 @@ class DockerTestRunner:
 
             # A killed Docker client can leave its container behind. Always try to
             # remove this uniquely named job; cleanup failure is reported, not hidden.
-            cleanup = subprocess.run(
-                [self.docker_binary, "rm", "-f", container_name],
-                capture_output=True, text=True, timeout=8, check=False,
-            )
+            try:
+                cleanup = subprocess.run(
+                    [self.docker_binary, "rm", "-f", container_name],
+                    capture_output=True, text=True, timeout=8, check=False,
+                )
+                cleanup_warning = cleanup.returncode != 0 and "No such container" not in (cleanup.stderr or "")
+            except (OSError, subprocess.TimeoutExpired):
+                cleanup_warning = True
             output = bytes(output_state["output"]).decode("utf-8", errors="replace")
             if output_state["truncated"]:
                 output += "\n[Output truncated at the configured limit; container stopped.]"
@@ -210,7 +218,7 @@ class DockerTestRunner:
             else:
                 status = "failed"
                 message = f"The test process exited with code {exit_code}."
-            if cleanup.returncode != 0 and "No such container" not in (cleanup.stderr or ""):
+            if cleanup_warning:
                 message += " Docker cleanup returned a warning; inspect the runner host."
             return TestExecutionReport(
                 status, exit_code, round(time.monotonic() - started, 3),
