@@ -220,3 +220,68 @@ class CodeGenerationDocument(BaseModel):
             raise ValueError("Generated bundle exceeds the 200 KB text limit.")
         return self
 
+
+
+class QATestCase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    test_id: str = Field(min_length=1, max_length=40)
+    title: str = Field(min_length=1, max_length=200)
+    objective: str = Field(min_length=1)
+    related_requirement_ids: list[str] = Field(default_factory=list)
+    test_type: Literal["unit", "integration", "system", "acceptance", "security", "usability"]
+    priority: Literal["high", "medium", "low"]
+    preconditions: list[str] = Field(default_factory=list)
+    steps: list[str] = Field(min_length=1)
+    expected_result: str = Field(min_length=1)
+    automation_candidate: bool = False
+
+class QATestPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan_summary: str = Field(min_length=1)
+    test_scope: list[str] = Field(default_factory=list)
+    test_cases: list[QATestCase] = Field(min_length=1, max_length=100)
+    coverage_gaps: list[str] = Field(default_factory=list)
+    execution_status: Literal["not_executed"]
+
+    @model_validator(mode="after")
+    def validate_unique_test_ids(self):
+        ids = [case.test_id for case in self.test_cases]
+        if len(ids) != len(set(ids)):
+            raise ValueError("QA test plan contains duplicate test IDs.")
+        return self
+
+class CodeReviewFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    finding_id: str = Field(min_length=1, max_length=40)
+    severity: Literal["critical", "high", "medium", "low", "info"]
+    category: str = Field(min_length=1, max_length=80)
+    file_path: str = Field(min_length=1, max_length=180)
+    line_start: int | None = Field(default=None, ge=1)
+    line_end: int | None = Field(default=None, ge=1)
+    issue: str = Field(min_length=1)
+    impact: str = Field(min_length=1)
+    recommendation: str = Field(min_length=1)
+    confidence: Literal["high", "medium", "low"]
+
+    @model_validator(mode="after")
+    def validate_line_range(self):
+        if (self.line_start is None) != (self.line_end is None):
+            raise ValueError("Both line_start and line_end must be supplied together.")
+        if self.line_start is not None and self.line_end < self.line_start:
+            raise ValueError("line_end cannot be before line_start.")
+        return self
+
+class CodeReviewDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    review_summary: str = Field(min_length=1)
+    verdict: Literal["approve", "changes_required", "reject"]
+    findings: list[CodeReviewFinding] = Field(default_factory=list, max_length=100)
+    reviewed_files: list[str] = Field(min_length=1, max_length=30)
+    limitations: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_unique_findings(self):
+        ids = [finding.finding_id for finding in self.findings]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Code review contains duplicate finding IDs.")
+        return self
