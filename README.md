@@ -16,7 +16,7 @@ ForgeAI is a human-supervised AI software engineering workspace that turns a pro
 - Generate an implementation-ready UI/UX specification from both approved inputs: personas, user journeys, navigation, screen-by-screen layouts and interactions, component specifications, design tokens, responsive behaviour, accessibility requirements, usability risks, and open design questions.
 - Generate a bounded source bundle (up to 30 files, 200 KB total, 30 KB per file) from all three approved specifications.
 - Validate generated paths, extensions, duplicate names, and size limits before storage or ZIP export.
-- Review source files in the app and download them as a ZIP; generated code is never executed by ForgeAI.
+- Review source files in the app and download them as a ZIP. Generated code is never executed inside the Streamlit process; execution is available only through the separate, opt-in restricted Docker runner.
 - Generate risk-based QA plans with actionable test cases, priorities, requirement traceability, and coverage gaps; plans are explicitly marked not executed.
 - Perform model-backed static source reviews with severity-ranked findings, file references, impact, recommendations, and confidence.
 - Persist QA plans and static review reports as versioned artifacts with human review controls and audit events.
