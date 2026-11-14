@@ -12,14 +12,15 @@ from forgeai.agents.uiux_designer import UIUXDesigner
 from forgeai.agents.code_generator import CodeGenerator
 from forgeai.agents.qa_engineer import QAEngineer
 from forgeai.agents.code_reviewer import CodeReviewer
+from forgeai.agents.code_repairer import CodeRepairer
 from forgeai.orchestration.state import ForgeWorkflowState
 from forgeai.providers.base import ModelProvider
 
 
-def _route_entry(state: ForgeWorkflowState) -> Literal["requirements", "architecture", "uiux", "codegen", "qa", "review"]:
+def _route_entry(state: ForgeWorkflowState) -> Literal["requirements", "architecture", "uiux", "codegen", "qa", "review", "repair"]:
     requested = state.get("requested_stage")
-    if requested not in {"requirements", "architecture", "uiux", "codegen", "qa", "review"}:
-        raise ValueError("requested_stage must be one of requirements, architecture, uiux, codegen, qa, or review.")
+    if requested not in {"requirements", "architecture", "uiux", "codegen", "qa", "review", "repair"}:
+        raise ValueError("requested_stage must be one of requirements, architecture, uiux, codegen, qa, review, or repair.")
     return requested  # type: ignore[return-value]
 
 
@@ -179,6 +180,54 @@ def _review_node(provider: ModelProvider):
     return run
 
 
+
+def _repair_node(provider: ModelProvider):
+    def run(state: ForgeWorkflowState) -> ForgeWorkflowState:
+        if state.get("requirements_approved") is not True:
+            raise ValueError("Code repair requires approved requirements.")
+        if state.get("code_bundle_approved") is not True:
+            raise ValueError("Code repair requires an approved source bundle.")
+        if state.get("repair_authorized") is not True:
+            raise ValueError("Code repair requires explicit operator authorization.")
+        attempt = state.get("repair_attempt")
+        if attempt not in {1, 2}:
+            raise ValueError("Code repair is limited to two proposals per repair cycle.")
+        requirements = state.get("requirements")
+        bundle = state.get("code_bundle")
+        execution_report = state.get("execution_report", {})
+        code_review = state.get("code_review", {})
+        if not isinstance(requirements, dict) or not isinstance(bundle, dict):
+            raise ValueError("Code repair requires approved requirements and a source bundle.")
+        execution_failed = isinstance(execution_report, dict) and execution_report.get("status") in {
+            "failed", "timed_out", "output_limit_exceeded"
+        }
+        review_findings = code_review.get("findings", []) if isinstance(code_review, dict) else []
+        if not execution_failed and not review_findings:
+            raise ValueError("Code repair requires a failed execution report or actionable review findings.")
+        result = CodeRepairer(provider).run(AgentContext(
+            project_id=state["project_id"],
+            user_request="Propose a narrowly scoped repair for the supplied verified failures/findings.",
+            constraints=state.get("constraints", []),
+            prior_artifacts={
+                "requirements": requirements,
+                "code_bundle": bundle,
+                "execution_report": execution_report,
+                "code_review": code_review,
+                "repair_attempt": attempt,
+            },
+        ))
+        return {
+            "code_bundle": result.artifact["code_bundle"],
+            "repair_proposal": result.artifact["repair_proposal"],
+            "current_stage": "repair_review",
+            "status": "awaiting_human_approval",
+            "summary": result.summary,
+            "warnings": result.warnings,
+            "messages": [{"agent": result.agent_name, "status": result.status, "summary": result.summary}],
+        }
+    return run
+
+
 def build_forge_workflow(provider: ModelProvider):
     """Compile the bounded graph; each invocation executes one stage and ends for review."""
     graph = StateGraph(ForgeWorkflowState)
@@ -188,6 +237,7 @@ def build_forge_workflow(provider: ModelProvider):
     graph.add_node("code_generator", _codegen_node(provider))
     graph.add_node("qa_engineer", _qa_node(provider))
     graph.add_node("code_reviewer", _review_node(provider))
+    graph.add_node("code_repairer", _repair_node(provider))
     graph.add_conditional_edges(
         START,
         _route_entry,
@@ -198,6 +248,7 @@ def build_forge_workflow(provider: ModelProvider):
             "codegen": "code_generator",
             "qa": "qa_engineer",
             "review": "code_reviewer",
+            "repair": "code_repairer",
         },
     )
     graph.add_edge("requirements_analyst", END)
@@ -206,4 +257,5 @@ def build_forge_workflow(provider: ModelProvider):
     graph.add_edge("code_generator", END)
     graph.add_edge("qa_engineer", END)
     graph.add_edge("code_reviewer", END)
+    graph.add_edge("code_repairer", END)
     return graph.compile()
