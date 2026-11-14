@@ -153,3 +153,34 @@ def test_unknown_stage_is_rejected():
     with pytest.raises(ValueError, match="requested_stage"):
         build_forge_workflow(provider).invoke({"requested_stage": "deployment"})
     assert provider.calls == []
+
+
+
+def test_repair_stage_requires_human_authorization():
+    provider = FakeProvider([])
+    with pytest.raises(ValueError, match="explicit operator authorization"):
+        build_forge_workflow(provider).invoke({
+            "project_id": 9, "user_request": "Repair.", "requested_stage": "repair",
+            "requirements": VALID_REQUIREMENTS, "requirements_approved": True,
+            "code_bundle": {"implementation_summary": "x", "implementation_notes": [],
+                            "files": [{"path": "src/main.py", "language": "python",
+                                       "purpose": "entry", "content": "def main(): return 1"}]},
+            "code_bundle_approved": True, "repair_authorized": False,
+            "execution_report": {"status": "failed"}, "repair_attempt": 1,
+        })
+    assert provider.calls == []
+
+
+def test_repair_stage_rejects_attempt_above_limit():
+    provider = FakeProvider([])
+    with pytest.raises(ValueError, match="limited to two"):
+        build_forge_workflow(provider).invoke({
+            "project_id": 9, "user_request": "Repair.", "requested_stage": "repair",
+            "requirements": VALID_REQUIREMENTS, "requirements_approved": True,
+            "code_bundle": {"implementation_summary": "x", "implementation_notes": [],
+                            "files": [{"path": "src/main.py", "language": "python",
+                                       "purpose": "entry", "content": "def main(): return 1"}]},
+            "code_bundle_approved": True, "repair_authorized": True,
+            "execution_report": {"status": "failed"}, "repair_attempt": 3,
+        })
+    assert provider.calls == []
