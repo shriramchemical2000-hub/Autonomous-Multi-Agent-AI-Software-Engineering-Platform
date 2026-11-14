@@ -2,7 +2,7 @@
 
 ForgeAI is a human-supervised AI software engineering workspace that turns a product brief into traceable engineering deliverables through specialist agents, structured validation, a shared LangGraph workflow, versioned artifacts, and explicit human approval gates.
 
-**Current status: Phase 9B isolated Docker test execution implemented as an explicit local opt-in; bounded repair and delivery remain pending.** Six specialists are executable: Requirements Analyst, Software Architect, UI/UX Designer, Code Generator, QA Engineer, and Code Reviewer. The application has automated unit tests for their contracts and workflow gates. A live Gemini request still requires a user-supplied API key and has not been verified by repository CI.
+**Current status: Phase 9C bounded repair proposals are implemented with human approval and regression reruns; delivery remains pending.** Six specialists are executable: Requirements Analyst, Software Architect, UI/UX Designer, Code Generator, QA Engineer, and Code Reviewer. The application has automated unit tests for their contracts and workflow gates. A live Gemini request still requires a user-supplied API key and has not been verified by repository CI.
 
 ## Current capabilities
 
@@ -21,6 +21,7 @@ ForgeAI is a human-supervised AI software engineering workspace that turns a pro
 - Perform model-backed static source reviews with severity-ranked findings, file references, impact, recommendations, and confidence.
 - Persist QA plans and static review reports as versioned artifacts with human review controls and audit events.
 - Optionally execute existing Python test files from an approved source bundle in a restricted Docker container; execution reports are versioned and tied to the exact source bundle.
+- Generate up to two bounded repair proposals per repair cycle from failed test output or current-source static review findings. Repairs replace existing non-test source files only, preserve tests, and create a separate pending source-bundle version for human approval and regression reruns.
 - Persist immutable, versioned artifacts and record approval/change-request decisions with review notes.
 - Browse the latest requirements, architecture, and UI/UX artifacts plus project audit events in Project Memory.
 - Browse the app and create project records without an API key; live model generation requires `GEMINI_API_KEY`.
@@ -46,6 +47,7 @@ The six implemented specialists are routed through a LangGraph state graph. Each
 4. Code Generator receives all three approved artifacts and returns a bounded text-only source bundle for human review.
 5. After the source bundle is approved, QA Engineer creates a traceable test plan and Code Reviewer performs a static source review. Both outputs await human review.
 6. If an operator explicitly enables the local Docker runner, existing Python test files in the approved bundle can be executed with network disabled, read-only source, non-root user, resource limits, and bounded output/time. The execution report is tied to the exact source artifact.
+7. After a failed run or actionable static finding, the Code Repair Engineer can propose up to two rounds of replacements for existing non-test source files. Each candidate is a new pending source artifact; a human must approve it before regression tests can run. Test files cannot be modified by the repair agent.
 
 The application checks the latest saved artifact's review status before enabling the next stage, and the graph independently checks approval flags before invoking a downstream specialist. A new artifact version is pending review. A change request is recorded, but automatic regeneration from review notes is not implemented. SQLite is the durable project and artifact store; durable LangGraph checkpointing is not implemented.
 
@@ -89,7 +91,7 @@ Configure `GEMINI_API_KEY` in the environment or a local `.env` file for real mo
 - [x] Phase 8 — controlled text-only source generation and human review
 - [x] Phase 9A — requirement-traceable QA planning and static AI code review
 - [x] Phase 9B — opt-in restricted Docker test execution and versioned execution reports
-- [ ] Phase 9C — bounded repair loop, regression reruns, and execution-backed defect closure
+- [x] Phase 9C — bounded repair proposals, human-approved candidate bundles, and regression reruns
 - [ ] Phase 10 — delivery exports, deployment, evaluation suite, and end-to-end demo
 
 ## License
