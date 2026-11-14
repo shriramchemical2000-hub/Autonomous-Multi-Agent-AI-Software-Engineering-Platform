@@ -112,7 +112,7 @@ def test_generated_bundle_rejects_per_file_and_total_size_limits():
 
 
 @pytest.mark.parametrize("reserved_path", [
-    "src/CON.py", "src/name.py:stream", "src/trailing .py", "src/trailing..py ",
+    "src/CON.py", "src/name.py:stream", "src/trailing.py ", "src/trailing..py ",
 ])
 def test_generated_file_rejects_windows_reserved_or_invalid_segments(reserved_path):
     payload = {**VALID_BUNDLE, "files": [{**VALID_BUNDLE["files"][0], "path": reserved_path}]}
