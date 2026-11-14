@@ -1,6 +1,7 @@
-"""SQLite persistence for projects and their audit events."""
+"""SQLite persistence for projects, artifacts, approvals, and audit events."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,21 @@ def initialize_database(database_path: str | Path) -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_project_events_project_id
             ON project_events(project_id);
+            CREATE TABLE IF NOT EXISTS project_artifacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                artifact_type TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                content_json TEXT NOT NULL,
+                review_status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(review_status IN ('pending', 'approved', 'changes_requested')),
+                review_notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(project_id, artifact_type, version)
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_artifacts_latest
+            ON project_artifacts(project_id, artifact_type, version DESC);
             """
         )
 
@@ -89,6 +105,94 @@ def list_project_events(database_path: str | Path, project_id: int) -> list[dict
     with _connect(database_path) as connection:
         rows = connection.execute(
             """SELECT id, project_id, event_type, details, created_at
-               FROM project_events WHERE project_id = ? ORDER BY id DESC"""
-        , (project_id,)).fetchall()
+               FROM project_events WHERE project_id = ? ORDER BY id DESC""",
+            (project_id,),
+        ).fetchall()
         return [dict(row) for row in rows]
+
+
+def save_project_artifact(
+    database_path: str | Path,
+    project_id: int,
+    artifact_type: str,
+    content: dict[str, Any],
+) -> int:
+    """Persist a new immutable artifact version and record its creation."""
+    if not artifact_type.strip():
+        raise ValueError("Artifact type cannot be empty.")
+    serialized = json.dumps(content, ensure_ascii=False)
+    with _connect(database_path) as connection:
+        project = connection.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if project is None:
+            raise ValueError(f"Project {project_id} does not exist.")
+        row = connection.execute(
+            "SELECT COALESCE(MAX(version), 0) AS version FROM project_artifacts "
+            "WHERE project_id = ? AND artifact_type = ?",
+            (project_id, artifact_type),
+        ).fetchone()
+        version = int(row["version"]) + 1
+        cursor = connection.execute(
+            """INSERT INTO project_artifacts
+               (project_id, artifact_type, version, content_json)
+               VALUES (?, ?, ?, ?)""",
+            (project_id, artifact_type, version, serialized),
+        )
+        artifact_id = int(cursor.lastrowid)
+        connection.execute(
+            "INSERT INTO project_events (project_id, event_type, details) VALUES (?, ?, ?)",
+            (project_id, "artifact_generated", f"{artifact_type} v{version} created; awaiting review."),
+        )
+        connection.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (project_id,))
+        return artifact_id
+
+
+def get_latest_project_artifact(
+    database_path: str | Path, project_id: int, artifact_type: str
+) -> dict[str, Any] | None:
+    with _connect(database_path) as connection:
+        row = connection.execute(
+            """SELECT id, project_id, artifact_type, version, content_json,
+                      review_status, review_notes, created_at
+               FROM project_artifacts
+               WHERE project_id = ? AND artifact_type = ?
+               ORDER BY version DESC LIMIT 1""",
+            (project_id, artifact_type),
+        ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["content"] = json.loads(result.pop("content_json"))
+        return result
+
+
+def review_project_artifact(
+    database_path: str | Path,
+    artifact_id: int,
+    decision: str,
+    notes: str = "",
+) -> None:
+    """Record a human decision; only explicit supported decisions are accepted."""
+    if decision not in {"approved", "changes_requested"}:
+        raise ValueError("Decision must be 'approved' or 'changes_requested'.")
+    with _connect(database_path) as connection:
+        cursor = connection.execute(
+            "UPDATE project_artifacts SET review_status = ?, review_notes = ? WHERE id = ?",
+            (decision, notes.strip(), artifact_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"Artifact {artifact_id} does not exist.")
+        row = connection.execute(
+            "SELECT project_id, artifact_type, version FROM project_artifacts WHERE id = ?",
+            (artifact_id,),
+        ).fetchone()
+        detail = f"{row['artifact_type']} v{row['version']}: {decision}"
+        if notes.strip():
+            detail += f" — {notes.strip()}"
+        connection.execute(
+            "INSERT INTO project_events (project_id, event_type, details) VALUES (?, ?, ?)",
+            (row["project_id"], "human_review", detail),
+        )
+        connection.execute(
+            "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (row["project_id"],),
+        )
