@@ -10,13 +10,15 @@ from forgeai.agents.requirements_analyst import RequirementsAnalyst
 from forgeai.agents.software_architect import SoftwareArchitect
 from forgeai.agents.uiux_designer import UIUXDesigner
 from forgeai.agents.code_generator import CodeGenerator
+from forgeai.agents.qa_engineer import QAEngineer
+from forgeai.agents.code_reviewer import CodeReviewer
 from forgeai.orchestration.state import ForgeWorkflowState
 from forgeai.providers.base import ModelProvider
 
 
-def _route_entry(state: ForgeWorkflowState) -> Literal["requirements", "architecture", "uiux", "codegen"]:
+def _route_entry(state: ForgeWorkflowState) -> Literal["requirements", "architecture", "uiux", "codegen", "qa", "review"]:
     requested = state.get("requested_stage")
-    if requested not in {"requirements", "architecture", "uiux", "codegen"}:
+    if requested not in {"requirements", "architecture", "uiux", "codegen", "qa", "review"}:
         raise ValueError("requested_stage must be 'requirements', 'architecture', 'uiux', or 'codegen'.")
     return requested  # type: ignore[return-value]
 
@@ -132,6 +134,51 @@ def _codegen_node(provider: ModelProvider):
     return run
 
 
+
+
+def _qa_node(provider: ModelProvider):
+    def run(state: ForgeWorkflowState) -> ForgeWorkflowState:
+        if state.get("requirements_approved") is not True:
+            raise ValueError("QA planning requires approved requirements.")
+        if state.get("code_bundle_approved") is not True:
+            raise ValueError("QA planning requires an approved source bundle.")
+        requirements, bundle = state.get("requirements"), state.get("code_bundle")
+        if not isinstance(requirements, dict) or not isinstance(bundle, dict):
+            raise ValueError("QA planning requires requirements and source bundle artifacts.")
+        result = QAEngineer(provider).run(AgentContext(
+            project_id=state["project_id"], user_request="Create a risk-based test plan.",
+            constraints=state.get("constraints", []),
+            prior_artifacts={"requirements": requirements, "code_bundle": bundle},
+        ))
+        return {"qa_test_plan": result.artifact["qa_test_plan"], "current_stage": "qa_review",
+                "status": "awaiting_human_approval", "summary": result.summary,
+                "warnings": result.warnings,
+                "messages": [{"agent": result.agent_name, "status": result.status, "summary": result.summary}]}
+    return run
+
+
+def _review_node(provider: ModelProvider):
+    def run(state: ForgeWorkflowState) -> ForgeWorkflowState:
+        if state.get("requirements_approved") is not True:
+            raise ValueError("Code review requires approved requirements.")
+        if state.get("code_bundle_approved") is not True:
+            raise ValueError("Code review requires an approved source bundle.")
+        requirements, bundle = state.get("requirements"), state.get("code_bundle")
+        architecture = state.get("architecture", {})
+        if not isinstance(requirements, dict) or not isinstance(bundle, dict):
+            raise ValueError("Code review requires requirements and source bundle artifacts.")
+        result = CodeReviewer(provider).run(AgentContext(
+            project_id=state["project_id"], user_request="Perform a static source review.",
+            constraints=state.get("constraints", []),
+            prior_artifacts={"requirements": requirements, "architecture": architecture, "code_bundle": bundle},
+        ))
+        return {"code_review": result.artifact["code_review"], "current_stage": "code_review_complete",
+                "status": "awaiting_human_approval", "summary": result.summary,
+                "warnings": result.warnings,
+                "messages": [{"agent": result.agent_name, "status": result.status, "summary": result.summary}]}
+    return run
+
+
 def build_forge_workflow(provider: ModelProvider):
     """Compile the bounded graph; each invocation executes one stage and ends for review."""
     graph = StateGraph(ForgeWorkflowState)
@@ -139,6 +186,8 @@ def build_forge_workflow(provider: ModelProvider):
     graph.add_node("software_architect", _architecture_node(provider))
     graph.add_node("uiux_designer", _uiux_node(provider))
     graph.add_node("code_generator", _codegen_node(provider))
+    graph.add_node("qa_engineer", _qa_node(provider))
+    graph.add_node("code_reviewer", _review_node(provider))
     graph.add_conditional_edges(
         START,
         _route_entry,
@@ -147,10 +196,14 @@ def build_forge_workflow(provider: ModelProvider):
             "architecture": "software_architect",
             "uiux": "uiux_designer",
             "codegen": "code_generator",
+            "qa": "qa_engineer",
+            "review": "code_reviewer",
         },
     )
     graph.add_edge("requirements_analyst", END)
     graph.add_edge("software_architect", END)
     graph.add_edge("uiux_designer", END)
     graph.add_edge("code_generator", END)
+    graph.add_edge("qa_engineer", END)
+    graph.add_edge("code_reviewer", END)
     return graph.compile()
