@@ -27,9 +27,19 @@ def get_settings() -> Settings:
     """Load settings from environment variables and an optional .env file."""
     if load_dotenv is not None:
         load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        # Streamlit Community Cloud stores secrets in st.secrets, not os.environ.
+        try:
+            import streamlit as st
+
+            api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
+        except Exception:
+            # Keep local development and non-Streamlit test environments usable.
+            api_key = ""
     return Settings(
         environment=os.getenv("FORGEAI_ENV", "development").strip() or "development",
         database_path=Path(os.getenv("FORGEAI_DB_PATH", "data/forgeai.db")),
-        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        gemini_api_key=api_key,
         model_name=os.getenv("FORGEAI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash",
     )
