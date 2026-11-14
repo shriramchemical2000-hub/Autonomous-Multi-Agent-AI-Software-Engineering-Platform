@@ -2,7 +2,7 @@
 
 ForgeAI is a human-supervised AI software engineering workspace that turns a product brief into traceable engineering deliverables through specialist agents, structured validation, a shared LangGraph workflow, versioned artifacts, and explicit human approval gates.
 
-**Current status: Phase 7 implemented in code.** Three specialists are executable: Requirements Analyst, Software Architect, and UI/UX Designer. The application has automated unit tests for their contracts and workflow gates. A live Gemini request still requires a user-supplied API key and has not been verified by repository CI.
+**Current status: Phase 8 implemented in code.** Four specialists are executable: Requirements Analyst, Software Architect, UI/UX Designer, and Code Generator. The application has automated unit tests for their contracts and workflow gates. A live Gemini request still requires a user-supplied API key and has not been verified by repository CI.
 
 ## Current capabilities
 
@@ -14,7 +14,7 @@ ForgeAI is a human-supervised AI software engineering workspace that turns a pro
 - Generate architecture from approved requirements: system overview, components, responsibilities, technology choices, dependencies, data entities, API endpoints, security considerations, decisions, and unresolved risks.
 - Require explicit human approval of the latest architecture before UI/UX design generation.
 - Generate an implementation-ready UI/UX specification from both approved inputs: personas, user journeys, navigation, screen-by-screen layouts and interactions, component specifications, design tokens, responsive behaviour, accessibility requirements, usability risks, and open design questions.
-- Persist immutable, versioned artifacts and record approval/change-request decisions with review notes.
+- Generate a bounded source bundle (up to 30 files, 200 KB total, 30 KB per file) from all three approved specifications.\n- Validate generated paths, extensions, duplicate names, and size limits before storage or ZIP export.\n- Review source files in the app and download them as a ZIP; generated code is never executed by ForgeAI.\n- Persist immutable, versioned artifacts and record approval/change-request decisions with review notes.
 - Browse the latest requirements, architecture, and UI/UX artifacts plus project audit events in Project Memory.
 - Browse the app and create project records without an API key; live model generation requires `GEMINI_API_KEY`.
 
@@ -31,11 +31,11 @@ ForgeAI is a human-supervised AI software engineering workspace that turns a pro
 
 ## Orchestration and approval model
 
-The three implemented specialists are routed through a LangGraph state graph. Each invocation executes one bounded stage and ends for human review:
+The four implemented specialists are routed through a LangGraph state graph. Each invocation executes one bounded stage and ends for human review:
 
 1. Requirements Analyst runs on the saved product brief; its artifact must be approved.
 2. Software Architect receives the approved requirements; its artifact must be approved.
-3. UI/UX Designer receives both approved requirements and approved architecture; its artifact must be approved.
+3. UI/UX Designer receives both approved requirements and approved architecture; its artifact must be approved.\n4. Code Generator receives all three approved artifacts and returns a bounded text-only source bundle for human review.
 
 The application checks the latest saved artifact's review status before enabling the next stage, and the graph independently checks approval flags before invoking a downstream specialist. A new artifact version is pending review. A change request is recorded, but automatic regeneration from review notes is not implemented. SQLite is the durable project and artifact store; durable LangGraph checkpointing is not implemented.
 
@@ -60,8 +60,8 @@ Configure `GEMINI_API_KEY` in the environment or a local `.env` file for real mo
 
 ## Safety and current limitations
 
-- Generated code is untrusted. ForgeAI does not execute generated code.
-- No backend/frontend source-code generation, test execution sandbox, automatic repair loop, or deployment workflow is implemented yet.
+- Generated code is untrusted. ForgeAI does not execute generated code, install packages, invoke a shell, or write generated files into the application repository.\n- Source bundles are limited to 30 files, 200 KB total, and 30 KB per file; only a defined set of text extensions and safe relative paths is accepted. These limits reduce risk but do not prove generated code is safe.
+- The Code Generator creates a first source bundle, but automated test execution, isolated sandboxing, automatic repair loops, and deployment are not implemented yet.
 - Any future execution service must use an isolated, resource-limited sandbox, network disabled by default, no access to host secrets, and explicit human approval.
 - The UI/UX artifact is a detailed design specification, not a rendered interactive prototype or evidence of usability testing.
 - Human approval is recorded in the artifact store; graph checkpoint persistence is not enabled.
@@ -75,7 +75,7 @@ Configure `GEMINI_API_KEY` in the environment or a local `.env` file for real mo
 - [x] Phase 5 — Software Architect and approval-gated architecture workflow
 - [x] Phase 6 — LangGraph orchestration and approval-gated specialist hand-offs
 - [x] Phase 7 — UI/UX Designer and approval-gated product experience specification
-- [ ] Phase 8 — controlled development workspace and code generation
+- [x] Phase 8 — controlled text-only source generation and human review\n- [ ] Phase 9 — isolated test execution, bounded repair, and code review
 - [ ] Phase 9 — test generation, bounded repair, and code review
 - [ ] Phase 10 — delivery exports, deployment, evaluation suite, and end-to-end demo
 
