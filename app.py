@@ -5,6 +5,7 @@ import streamlit as st
 
 from forgeai.agents.contracts import AgentContext
 from forgeai.agents.requirements_analyst import AgentExecutionError, RequirementsAnalyst
+from forgeai.agents.software_architect import SoftwareArchitect
 from forgeai.config import get_settings
 from forgeai.database import (
     add_project_event,
@@ -57,7 +58,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.divider()
-    st.caption("PHASE 4 · REQUIREMENTS WORKSPACE")
+    st.caption("PHASE 5 · ARCHITECTURE WORKSPACE")
     st.caption("One specialist is executable; remaining roles are planned.")
 
 
@@ -132,7 +133,7 @@ if page == "Overview":
     c1, c2, c3 = st.columns(3)
     c1.metric("Projects created", len(projects))
     c2.metric("Specialist roles designed", "8")
-    c3.metric("Executable specialists", "1")
+    c3.metric("Executable specialists", "2")
     st.subheader("Engineering workflow")
     stages = [
         ("01 · Discover", "Convert the product idea into structured requirements."),
@@ -248,6 +249,95 @@ elif page == "Product Studio":
                             st.rerun()
             else:
                 st.info(f"Human decision: {status.replace('_', ' ').title()}. {artifact['review_notes']}")
+
+    st.divider()
+    st.subheader("Software Architect")
+    approved_requirements = get_latest_project_artifact(settings.database_path, selected["id"], "requirements")
+    if not approved_requirements or approved_requirements["review_status"] != "approved":
+        st.info("The Software Architect is unlocked after you approve the Requirements Analyst specification. This approval gate prevents architecture from being built on unreviewed requirements.")
+    else:
+        st.caption("The architect uses the approved requirements as its source of truth. It proposes system components, data entities, API contracts, security considerations, design decisions, and unresolved risks.")
+        if st.button("Generate architecture", type="primary", key=f"generate_architecture_{selected['id']}", disabled=not settings.has_model_api_key):
+            with st.spinner("Software Architect is designing and validating the system architecture..."):
+                try:
+                    context = AgentContext(
+                        project_id=selected["id"],
+                        user_request=f"Create an architecture for {approved_requirements['content'].get('product_name', selected['name'])}.",
+                        prior_artifacts={"requirements": approved_requirements["content"]},
+                    )
+                    result = SoftwareArchitect(GeminiProvider(settings)).run(context)
+                    save_project_artifact(settings.database_path, selected["id"], "architecture", result.artifact["architecture"])
+                    add_project_event(settings.database_path, selected["id"], "software_architect_completed", result.summary)
+                    st.success(result.summary)
+                    for warning in result.warnings:
+                        st.warning(warning)
+                    st.rerun()
+                except (AgentExecutionError, ModelProviderError) as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"Architecture generation failed ({type(exc).__name__}). Check the app logs and configuration.")
+
+        architecture = get_latest_project_artifact(settings.database_path, selected["id"], "architecture")
+        if architecture:
+            st.markdown("### Generated system architecture")
+            st.caption(f"Version {architecture['version']} · Review status: {architecture['review_status'].replace('_', ' ').title()}")
+            design = architecture["content"]
+            st.markdown("**System overview**")
+            st.write(design["system_overview"])
+            st.markdown("### Architecture components")
+            for component in design["components"]:
+                with st.expander(component["name"], expanded=True):
+                    st.write(component["responsibility"])
+                    st.caption("Technology: " + (component["technology"] or "Not specified"))
+                    st.caption("Dependencies: " + (", ".join(component["dependencies"]) or "None listed"))
+            st.markdown("### Data entities")
+            for entity in design["data_entities"]:
+                st.markdown(f"- {entity}")
+            st.markdown("### API contract")
+            if design["api_endpoints"]:
+                st.dataframe(
+                    [
+                        {
+                            "Method": endpoint["method"],
+                            "Path": endpoint["path"],
+                            "Purpose": endpoint["purpose"],
+                            "Authentication": "Required" if endpoint["authentication_required"] else "Not required",
+                        }
+                        for endpoint in design["api_endpoints"]
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.caption("No API endpoints proposed.")
+            for heading, key in [
+                ("Security considerations", "security_considerations"),
+                ("Design decisions and trade-offs", "design_decisions"),
+                ("Unresolved risks", "unresolved_risks"),
+            ]:
+                st.markdown(f"### {heading}")
+                for item in design[key]:
+                    st.markdown(f"- {item}")
+            if architecture["review_status"] == "pending":
+                st.markdown("### Architecture approval")
+                architecture_notes = st.text_area("Architecture review notes (optional)", key=f"architecture_notes_{architecture['id']}")
+                approve_arch_col, change_arch_col = st.columns(2)
+                with approve_arch_col:
+                    if st.button("Approve architecture", type="primary", key=f"approve_arch_{architecture['id']}"):
+                        review_project_artifact(settings.database_path, architecture["id"], "approved", architecture_notes)
+                        st.success("Architecture approval recorded.")
+                        st.rerun()
+                with change_arch_col:
+                    if st.button("Request architecture changes", key=f"request_arch_{architecture['id']}"):
+                        if not architecture_notes.strip():
+                            st.error("Add notes describing the architecture changes needed.")
+                        else:
+                            review_project_artifact(settings.database_path, architecture["id"], "changes_requested", architecture_notes)
+                            st.warning("Architecture change request recorded. Automatic redesign is not implemented yet.")
+                            st.rerun()
+            else:
+                st.info(f"Architecture decision: {architecture['review_status'].replace('_', ' ').title()}. {architecture['review_notes']}")
+
     st.divider()
     st.subheader("Your projects")
     if projects:
@@ -264,7 +354,7 @@ elif page == "Agent Command Center":
     agents = [
         ("Project Manager", "Coordinates workflow, dependencies, and hand-offs.", False),
         ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria.", True),
-        ("Software Architect", "Designs components, data models, and API contracts.", False),
+        ("Software Architect", "Designs components, data models, and API contracts from approved requirements.", True),
         ("UI/UX Designer", "Defines journeys, interaction patterns, and screen specifications.", False),
         ("Backend Developer", "Implements approved services and business logic.", False),
         ("Frontend Developer", "Builds user-facing components against agreed contracts.", False),
@@ -316,4 +406,4 @@ else:
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.2.0 · Requirements Analyst integration · Generated code is never executed by this application.")
+st.caption("ForgeAI 0.3.0 · Requirements Analyst + Software Architect · Generated code is never executed by this application.")
