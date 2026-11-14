@@ -68,7 +68,7 @@ with st.sidebar:
     )
     st.divider()
     st.caption("PHASE 9 · QUALITY ENGINEERING")
-    st.caption("Six executable specialists are coordinated through approval-gated LangGraph stages.")
+    st.caption("Seven executable specialists are coordinated through approval-gated LangGraph stages.")
 
 
 def render_requirements(document: dict) -> None:
@@ -142,7 +142,7 @@ if page == "Overview":
     c1, c2, c3 = st.columns(3)
     c1.metric("Projects created", len(projects))
     c2.metric("Specialist roles designed", "8")
-    c3.metric("Executable specialists", "6")
+    c3.metric("Executable specialists", "7")
     st.subheader("Engineering workflow")
     stages = [
         ("01 · Discover", "Convert the product idea into structured requirements."),
@@ -855,7 +855,7 @@ elif page == "Product Studio":
 
 elif page == "Agent Command Center":
     st.title("Agent Command Center")
-    st.write("ForgeAI has six executable specialists coordinated by approval-gated LangGraph stages. The remaining roles are clearly marked as planned.")
+    st.write("ForgeAI has seven executable specialists coordinated by approval-gated LangGraph stages. The remaining roles are clearly marked as planned.")
     agents = [
         ("Project Manager", "Coordinates workflow, dependencies, and hand-offs.", False),
         ("Requirements Analyst", "Structures requirements, user stories, and acceptance criteria.", True),
@@ -865,6 +865,7 @@ elif page == "Agent Command Center":
         ("Frontend Developer", "Builds user-facing components against agreed contracts.", False),
         ("QA Engineer", "Creates traceable test plans; approved Python tests can run through the opt-in Docker runner.", True),
         ("Code Reviewer", "Performs evidence-led static review of source text for correctness, security, and maintainability.", True),
+        ("Code Repair Engineer", "Proposes bounded, human-reviewed fixes from test failures and static findings.", True),
     ]
     for start in range(0, len(agents), 2):
         left, right = st.columns(2)
@@ -920,4 +921,4 @@ else:
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
-st.caption("ForgeAI 0.7.0 · Six approval-gated specialists · Generated source is stored as untrusted text and is never executed by this application.")
+st.caption("ForgeAI 0.8.0 · Seven approval-gated specialists · Generated source is stored as untrusted text and is executed only by the opt-in Docker runner.")
