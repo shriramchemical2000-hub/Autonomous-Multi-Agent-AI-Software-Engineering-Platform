@@ -90,3 +90,71 @@ class ArchitectureDocument(BaseModel):
     security_considerations: list[str] = Field(default_factory=list)
     design_decisions: list[str] = Field(default_factory=list)
     unresolved_risks: list[str] = Field(default_factory=list)
+
+
+
+class UserJourneyStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    step: int = Field(ge=1)
+    user_action: str = Field(min_length=1)
+    system_response: str = Field(min_length=1)
+    decision_or_exception: str | None = None
+
+
+class UserJourney(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    persona: str = Field(min_length=1)
+    goal: str = Field(min_length=1)
+    entry_point: str = Field(min_length=1)
+    steps: list[UserJourneyStep] = Field(min_length=1)
+    success_outcome: str = Field(min_length=1)
+
+
+class ScreenSpecification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    screen_name: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    primary_user: str = Field(min_length=1)
+    layout_regions: list[str] = Field(min_length=1)
+    key_components: list[str] = Field(default_factory=list)
+    primary_action: str = Field(min_length=1)
+    states_and_feedback: list[str] = Field(default_factory=list)
+    validation_and_errors: list[str] = Field(default_factory=list)
+
+
+class UIComponentSpecification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    component_name: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    behaviour: str = Field(min_length=1)
+    accessibility_notes: list[str] = Field(default_factory=list)
+
+
+class DesignSystemSpecification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    colour_tokens: list[str] = Field(default_factory=list)
+    typography_scale: list[str] = Field(default_factory=list)
+    spacing_and_layout_rules: list[str] = Field(default_factory=list)
+    visual_principles: list[str] = Field(default_factory=list)
+
+
+class UIUXDesignDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    design_overview: str = Field(min_length=1)
+    design_goals: list[str] = Field(default_factory=list)
+    personas: list[str] = Field(default_factory=list)
+    user_journeys: list[UserJourney] = Field(default_factory=list)
+    navigation_structure: list[str] = Field(default_factory=list)
+    screen_specifications: list[ScreenSpecification] = Field(min_length=1)
+    reusable_components: list[UIComponentSpecification] = Field(default_factory=list)
+    design_system: DesignSystemSpecification
+    responsive_behaviour: list[str] = Field(default_factory=list)
+    accessibility_requirements: list[str] = Field(default_factory=list)
+    usability_risks: list[str] = Field(default_factory=list)
+    open_design_questions: list[str] = Field(default_factory=list)
