@@ -106,3 +106,29 @@ def test_architect_stops_after_two_invalid_responses():
         SoftwareArchitect(provider).run(context)
 
     assert len(provider.calls) == 2
+
+
+def test_architect_normalizes_scalar_security_and_design_notes():
+    architecture = dict(VALID_ARCHITECTURE)
+    architecture["security_considerations"] = (
+        "All passwords are hashed; authorization is enforced on state-changing endpoints."
+    )
+    architecture["design_decisions"] = (
+        "Selected modular monolith architecture with asynchronous workers for report generation."
+    )
+    provider = FakeProvider([json.dumps(architecture)])
+    context = AgentContext(
+        project_id=7,
+        user_request="Design the approved product.",
+        prior_artifacts={"requirements": {"product_name": "Appointment Platform"}},
+    )
+
+    result = SoftwareArchitect(provider).run(context)
+    design = result.artifact["architecture"]
+
+    assert design["security_considerations"] == [
+        "All passwords are hashed; authorization is enforced on state-changing endpoints."
+    ]
+    assert design["design_decisions"] == [
+        "Selected modular monolith architecture with asynchronous workers for report generation."
+    ]
