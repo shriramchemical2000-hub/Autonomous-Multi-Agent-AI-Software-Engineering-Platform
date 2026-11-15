@@ -167,6 +167,15 @@ class ArchitectureDocument(BaseModel):
     design_decisions: list[str] = Field(default_factory=list)
     unresolved_risks: list[str] = Field(default_factory=list)
 
+    @field_validator("security_considerations", "design_decisions", mode="before")
+    @classmethod
+    def normalize_architecture_text_lists(cls, value: Any) -> Any:
+        """Accept either a list of design notes or one consolidated text value."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        return value
 
 
 class UserJourneyStep(BaseModel):
