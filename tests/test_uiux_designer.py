@@ -203,3 +203,30 @@ def test_uiux_text_list_normalizer_preserves_nested_object_details():
     assert "/catalog" in parsed.navigation_structure[0]
     assert "Offers" in parsed.navigation_structure[0]
     assert "/offers" in parsed.navigation_structure[0]
+
+def test_uiux_designer_normalizes_scalar_accessibility_notes():
+    design = dict(VALID_DESIGN)
+    design["reusable_components"] = [
+        {
+            "component_name": "Search field",
+            "purpose": "Search the product catalogue.",
+            "behaviour": "Accepts a query and submits on Enter.",
+            "accessibility_notes": "Labelled with 'Search products' and supports keyboard focus.",
+        },
+        {
+            "component_name": "Filter accordion",
+            "purpose": "Expand and collapse product filters.",
+            "behaviour": "Toggles filter options.",
+            "accessibility_notes": ["Uses button semantics and exposes expanded state."],
+        },
+    ]
+    provider = FakeProvider([json.dumps(design)])
+    result = UIUXDesigner(provider).run(make_context())
+    notes = result.artifact["uiux_design"]["reusable_components"]
+    assert notes[0]["accessibility_notes"] == [
+        "Labelled with 'Search products' and supports keyboard focus."
+    ]
+    assert notes[1]["accessibility_notes"] == [
+        "Uses button semantics and exposes expanded state."
+    ]
+
