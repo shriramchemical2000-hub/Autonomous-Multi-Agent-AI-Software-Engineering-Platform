@@ -24,8 +24,8 @@ class NvidiaProvider:
             raise ModelProviderError(
                 "NVIDIA_API_KEY is not configured. Add it to Streamlit Secrets or the environment."
             )
-        if not 0.0 <= temperature <= 2.0:
-            raise ValueError("temperature must be between 0.0 and 2.0")
+        if not 0.0 <= temperature <= 1.0:
+            raise ValueError("temperature must be between 0.0 and 1.0 for NVIDIA NIM.")
 
         try:
             from openai import OpenAI
@@ -43,12 +43,28 @@ class NvidiaProvider:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=temperature,
-                max_tokens=8192,
+                # Nemotron 3.5 is a reasoning model. Disable hidden reasoning for
+                # structured agent outputs so the token budget is spent on the
+                # JSON/text that ForgeAI must validate and save.
+                max_tokens=16384,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
-            content = response.choices[0].message.content
-            if not isinstance(content, str) or not content.strip():
-                raise ModelProviderError("NVIDIA returned an empty response.")
-            return content.strip()
+            choices = getattr(response, "choices", None) or []
+            if not choices:
+                raise ModelProviderError(
+                    "NVIDIA returned no completion choices. Check model availability and retry."
+                )
+            message = getattr(choices[0], "message", None)
+            content = getattr(message, "content", None)
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+
+            finish_reason = getattr(choices[0], "finish_reason", None) or "unknown"
+            raise ModelProviderError(
+                "NVIDIA returned no visible text "
+                f"(finish_reason={finish_reason}). The model may have used its output "
+                "budget for reasoning; ForgeAI now requests visible output with reasoning disabled."
+            )
         except ModelProviderError:
             raise
         except Exception as exc:
