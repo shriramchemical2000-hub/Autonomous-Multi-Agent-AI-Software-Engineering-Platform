@@ -109,7 +109,10 @@ class CodeGenerator:
                 if isinstance(exc, json.JSONDecodeError) and (
                     "Unterminated string" in exc.msg
                     or "EOF" in exc.msg.upper()
-                    or exc.pos >= max(0, len(raw.rstrip()) - 50)
+                    or (
+                        len(raw.rstrip()) > 100
+                        and exc.pos >= len(raw.rstrip()) - 50
+                    )
                 ):
                     correction = (
                         "The previous completion was truncated before its JSON string/object closed. "
