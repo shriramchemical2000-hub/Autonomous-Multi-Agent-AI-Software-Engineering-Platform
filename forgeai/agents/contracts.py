@@ -167,7 +167,33 @@ class ArchitectureDocument(BaseModel):
     design_decisions: list[str] = Field(default_factory=list)
     unresolved_risks: list[str] = Field(default_factory=list)
 
-    @field_validator("security_considerations", "design_decisions", mode="before")
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_architecture_aliases(cls, value: Any) -> Any:
+        """Map provider-specific decision naming into the canonical contract."""
+        if not isinstance(value, dict) or "proposed_decisions" not in value:
+            return value
+        normalized = dict(value)
+        proposed = normalized.pop("proposed_decisions")
+        existing = normalized.get("design_decisions", [])
+        if existing is None:
+            existing = []
+        if isinstance(existing, str):
+            existing = [existing] if existing.strip() else []
+        elif not isinstance(existing, list):
+            return normalized
+        if isinstance(proposed, str):
+            proposed = [proposed] if proposed.strip() else []
+        elif proposed is None:
+            proposed = []
+        if isinstance(proposed, list):
+            normalized["design_decisions"] = existing + proposed
+        return normalized
+
+    @field_validator(
+        "security_considerations", "design_decisions", "unresolved_risks",
+        mode="before",
+    )
     @classmethod
     def normalize_architecture_text_lists(cls, value: Any) -> Any:
         """Accept either a list of design notes or one consolidated text value."""
