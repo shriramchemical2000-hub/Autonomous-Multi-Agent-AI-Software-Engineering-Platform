@@ -72,7 +72,7 @@ Run tests:
 pytest -q
 ```
 
-Configure `NVIDIA_API_KEY` in Streamlit Secrets, the environment, or a local `.env` file for real model requests. Set `NVIDIA_MODEL` to a model identifier available in the NVIDIA API Catalog; the default is `meta/llama-3.3-70b-instruct`. Never commit `.env` files, API keys, access tokens, or production data. Hosted API availability and rate limits apply. CI uses fake providers and does not make live model calls.
+Configure `NVIDIA_API_KEY` in Streamlit Secrets, the environment, or a local `.env` file for real model requests. Set `NVIDIA_MODEL` to a model identifier available in the NVIDIA API Catalog; the default is `nvidia/nemotron-3.5-lightning-30b-a3b`. This is an NVIDIA-hosted model listed in the current NIM LLM API catalog. Never commit `.env` files, API keys, access tokens, or production data. Hosted API availability and rate limits apply. CI uses fake providers and does not make live model calls.
 
 ## Safety and current limitations
 
