@@ -84,6 +84,13 @@ def test_uiux_designer_accepts_markdown_json_fence():
     assert result.artifact["uiux_design"]["design_overview"]
 
 
+def test_uiux_designer_repairs_minor_malformed_json_before_validation():
+    malformed = json.dumps(VALID_DESIGN).replace('"design_overview":', 'design_overview:', 1)
+    provider = FakeProvider([malformed])
+    result = UIUXDesigner(provider).run(make_context())
+    assert result.artifact["uiux_design"]["design_overview"] == VALID_DESIGN["design_overview"]
+
+
 def test_uiux_designer_requires_both_prior_approved_artifacts():
     provider = FakeProvider([json.dumps(VALID_DESIGN)])
     context = AgentContext(project_id=9, user_request="Design it.", prior_artifacts={"requirements": {}})
