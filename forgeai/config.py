@@ -17,10 +17,16 @@ class Settings:
     database_path: Path
     gemini_api_key: str
     model_name: str
+    nvidia_api_key: str = ""
+    nvidia_model_name: str = "meta/llama-3.3-70b-instruct"
 
     @property
     def has_model_api_key(self) -> bool:
         return bool(self.gemini_api_key.strip())
+
+    @property
+    def has_nvidia_api_key(self) -> bool:
+        return bool(self.nvidia_api_key.strip())
 
 
 def get_settings() -> Settings:
@@ -37,9 +43,20 @@ def get_settings() -> Settings:
         except Exception:
             # Keep local development and non-Streamlit test environments usable.
             api_key = ""
+    nvidia_api_key = os.getenv("NVIDIA_API_KEY", "").strip()
+    nvidia_model = os.getenv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct").strip() or "meta/llama-3.3-70b-instruct"
+    if not nvidia_api_key:
+        try:
+            import streamlit as st
+            nvidia_api_key = str(st.secrets.get("NVIDIA_API_KEY", "")).strip()
+            nvidia_model = str(st.secrets.get("NVIDIA_MODEL", nvidia_model)).strip() or nvidia_model
+        except Exception:
+            nvidia_api_key = ""
     return Settings(
         environment=os.getenv("FORGEAI_ENV", "development").strip() or "development",
         database_path=Path(os.getenv("FORGEAI_DB_PATH", "data/forgeai.db")),
         gemini_api_key=api_key,
         model_name=os.getenv("FORGEAI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash",
+        nvidia_api_key=nvidia_api_key,
+        nvidia_model_name=nvidia_model,
     )
