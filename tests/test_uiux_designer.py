@@ -157,3 +157,49 @@ def test_uiux_designer_repairs_missing_comma_in_model_json():
     provider = FakeProvider([malformed])
     result = UIUXDesigner(provider).run(make_context())
     assert result.artifact["uiux_design"]["design_goals"] == VALID_DESIGN["design_goals"]
+
+
+
+def test_uiux_designer_normalizes_structured_navigation_and_layout_regions():
+    design = dict(VALID_DESIGN)
+    design["navigation_structure"] = [
+        {
+            "label": "Main Navigation",
+            "children": [
+                {"label": "Home", "route": "/"},
+                {
+                    "label": "Admin",
+                    "route": "/admin",
+                    "children": [{"label": "Promotions", "route": "/admin/promotions"}],
+                },
+            ],
+        }
+    ]
+    screen = dict(VALID_DESIGN["screen_specifications"][0])
+    screen["layout_regions"] = [
+        {"region": "header", "content": "Logo, search and account controls"},
+        {"region": "main", "content": "Product listing and filters"},
+    ]
+    design["screen_specifications"] = [screen]
+    provider = FakeProvider([json.dumps(design)])
+    result = UIUXDesigner(provider).run(make_context())
+    artifact = result.artifact["uiux_design"]
+    navigation = " ".join(artifact["navigation_structure"])
+    assert "Main Navigation" in navigation
+    assert "Promotions" in navigation
+    assert "/admin/promotions" in navigation
+    regions = " ".join(artifact["screen_specifications"][0]["layout_regions"])
+    assert "header" in regions.lower()
+    assert "Logo, search and account controls" in regions
+
+
+def test_uiux_text_list_normalizer_preserves_nested_object_details():
+    from forgeai.agents.contracts import UIUXDesignDocument
+
+    design = dict(VALID_DESIGN)
+    design["navigation_structure"] = [{"label": "Catalog", "route": "/catalog", "children": [{"label": "Offers", "route": "/offers"}]}]
+    parsed = UIUXDesignDocument.model_validate(design)
+    assert "Catalog" in parsed.navigation_structure[0]
+    assert "/catalog" in parsed.navigation_structure[0]
+    assert "Offers" in parsed.navigation_structure[0]
+    assert "/offers" in parsed.navigation_structure[0]
