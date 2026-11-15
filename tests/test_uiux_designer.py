@@ -149,3 +149,11 @@ def test_uiux_persona_normalizer_accepts_strings_and_none():
     assert parsed.personas[1].startswith("Admin")
     design["personas"] = None
     assert UIUXDesignDocument.model_validate(design).personas == []
+
+
+def test_uiux_designer_repairs_missing_comma_in_model_json():
+    valid = json.dumps(VALID_DESIGN)
+    malformed = valid.replace('", "design_goals":', '" "design_goals":', 1)
+    provider = FakeProvider([malformed])
+    result = UIUXDesigner(provider).run(make_context())
+    assert result.artifact["uiux_design"]["design_goals"] == VALID_DESIGN["design_goals"]
