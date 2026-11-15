@@ -1008,7 +1008,7 @@ else:
         st.success("A model API key is configured. Implemented specialists can make model requests.")
     else:
         st.warning("No model API key configured. Add NVIDIA_API_KEY to enable live generation.")
-    st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
+    st.caption("Credentials are read from Streamlit Secrets, environment variables, or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
 st.caption("ForgeAI 1.0.0 · Seven approval-gated specialists · Evidence-based delivery exports · Deployment remains operator-controlled.")
