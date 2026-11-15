@@ -46,7 +46,9 @@ Journey fields: persona, goal, entry_point, steps, success_outcome.
 Each step: step (integer >= 1), user_action, system_response, decision_or_exception (string or null).
 Screen fields: screen_name, purpose, primary_user, layout_regions, key_components,
 primary_action, states_and_feedback, validation_and_errors.
-Reusable component fields: component_name, purpose, behaviour, accessibility_notes.
+Reusable component fields: component_name, purpose, behaviour, variants (array of supported variations),
+accessibility_notes. You may include useful additional component metadata such as interaction_states,
+properties, or usage_notes; preserve those details as component metadata.
 design_system fields: colour_tokens, typography_scale, spacing_and_layout_rules, visual_principles.
 Every field ending in a plural or explicitly described as an array must be a JSON array, not a scalar or object.
 Do not add keys outside this schema. Provide all sections even when a section has no content; use an empty array where appropriate.
