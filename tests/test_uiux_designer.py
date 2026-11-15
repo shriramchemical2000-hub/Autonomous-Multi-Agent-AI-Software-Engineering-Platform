@@ -230,3 +230,65 @@ def test_uiux_designer_normalizes_scalar_accessibility_notes():
         "Uses button semantics and exposes expanded state."
     ]
 
+def test_uiux_designer_normalizes_grouped_navigation_object():
+    design = dict(VALID_DESIGN)
+    design["navigation_structure"] = {
+        "top_level": [
+            {"label": "Home", "route": "/"},
+            {"label": "Shop", "route": "/shop"},
+        ],
+        "admin": {"items": [{"label": "Admin Dashboard", "route": "/admin"}]},
+    }
+    provider = FakeProvider([json.dumps(design)])
+    result = UIUXDesigner(provider).run(make_context())
+    navigation = " ".join(result.artifact["uiux_design"]["navigation_structure"])
+    assert "Top Level" in navigation
+    assert "Home" in navigation
+    assert "/shop" in navigation
+    assert "Admin Dashboard" in navigation
+    assert "/admin" in navigation
+
+
+def test_uiux_designer_accepts_alternate_screen_and_design_system_keys():
+    design = dict(VALID_DESIGN)
+    design.pop("screen_specifications")
+    design["screens"] = [{
+        "name": "Product Listing",
+        "description": "Browse and filter products.",
+        "persona": "Customer",
+        "layout": [{"region": "main", "content": "Product grid"}],
+        "components": ["Filter panel", "Product card"],
+        "primary_cta": "Open product details",
+        "states": ["Loading", "Results", "No results"],
+        "validation": ["Filter values must be valid."],
+    }]
+    design.pop("design_system")
+    design["visual_design_system"] = {
+        "color_palette": ["Primary blue", "Neutral background"],
+        "typography": ["16px body", "24px heading"],
+        "spacing": ["8px base spacing"],
+        "principles": ["Clear hierarchy", "Consistent feedback"],
+    }
+    provider = FakeProvider([json.dumps(design)])
+    result = UIUXDesigner(provider).run(make_context())
+    artifact = result.artifact["uiux_design"]
+    assert artifact["screen_specifications"][0]["screen_name"] == "Product Listing"
+    assert "Product grid" in artifact["screen_specifications"][0]["layout_regions"][0]
+    assert "Primary blue" in artifact["design_system"]["colour_tokens"][0]
+    assert "8px base spacing" in artifact["design_system"]["spacing_and_layout_rules"][0]
+    assert not any("omitted screen specifications" in warning for warning in result.warnings)
+    assert not any("omitted the design system" in warning for warning in result.warnings)
+
+
+def test_uiux_designer_flags_fallback_when_screens_and_design_system_are_omitted():
+    design = dict(VALID_DESIGN)
+    design.pop("screen_specifications")
+    design.pop("design_system")
+    provider = FakeProvider([json.dumps(design)])
+    result = UIUXDesigner(provider).run(make_context())
+    artifact = result.artifact["uiux_design"]
+    assert artifact["screen_specifications"][0]["screen_name"] == "Primary Experience — draft fallback"
+    assert artifact["design_system"]["colour_tokens"] == []
+    assert any("omitted screen specifications" in warning for warning in result.warnings)
+    assert any("omitted the design system" in warning for warning in result.warnings)
+
