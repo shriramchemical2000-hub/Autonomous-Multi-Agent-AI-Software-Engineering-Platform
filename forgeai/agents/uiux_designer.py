@@ -5,8 +5,6 @@ import json
 import re
 from typing import Any
 
-from json_repair import repair_json
-
 from pydantic import ValidationError
 
 from forgeai.agents.contracts import AgentContext, AgentResult, UIUXDesignDocument
@@ -63,9 +61,16 @@ class UIUXDesigner:
         try:
             payload = json.loads(cleaned)
         except json.JSONDecodeError:
-            # Repair minor syntax defects in long model-generated JSON. Pydantic
-            # still enforces the complete, strict UI/UX contract after repair.
-            payload = repair_json(cleaned, return_objects=True)
+            # Recover common formatting defects without an extra runtime package.
+            # Quote unquoted object keys and remove trailing commas only; the
+            # strict Pydantic schema below still validates the resulting object.
+            repaired = re.sub(
+                r'([,{]\\s*)([A-Za-z_][A-Za-z0-9_-]*)(\\s*:)',
+                lambda match: match.group(1) + json.dumps(match.group(2)) + match.group(3),
+                cleaned,
+            )
+            repaired = re.sub(r',\\s*([}\\]])', r'\\1', repaired)
+            payload = json.loads(repaired)
         if not isinstance(payload, dict):
             raise ValueError("The model response must contain one JSON object.")
         return UIUXDesignDocument.model_validate(payload)
