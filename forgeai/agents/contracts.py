@@ -260,6 +260,39 @@ class UIUXDesignDocument(BaseModel):
     design_overview: str = Field(min_length=1)
     design_goals: list[str] = Field(default_factory=list)
     personas: list[str] = Field(default_factory=list)
+
+    @field_validator("personas", mode="before")
+    @classmethod
+    def normalize_personas(cls, value: Any) -> Any:
+        """Convert structured persona objects into readable, information-preserving text."""
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return value
+        normalized: list[Any] = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append(item)
+            elif isinstance(item, dict):
+                parts: list[str] = []
+                name = item.get("name") or item.get("persona") or item.get("title") or item.get("role")
+                if name:
+                    parts.append(str(name))
+                for key, detail in item.items():
+                    if key in {"name", "persona", "title", "role"} or detail in (None, "", [], {}):
+                        continue
+                    label = key.replace("_", " ").title()
+                    if isinstance(detail, list):
+                        rendered = "; ".join(str(entry) for entry in detail)
+                    elif isinstance(detail, dict):
+                        rendered = "; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in detail.items())
+                    else:
+                        rendered = str(detail)
+                    parts.append(f"{label}: {rendered}")
+                normalized.append(" — ".join(parts) if parts else "Persona details not supplied.")
+            else:
+                normalized.append(str(item))
+        return normalized
     user_journeys: list[UserJourney] = Field(default_factory=list)
     navigation_structure: list[str] = Field(default_factory=list)
     screen_specifications: list[ScreenSpecification] = Field(min_length=1)
