@@ -65,11 +65,11 @@ class UIUXDesigner:
             # Quote unquoted object keys and remove trailing commas only; the
             # strict Pydantic schema below still validates the resulting object.
             repaired = re.sub(
-                r'([,{]\\s*)([A-Za-z_][A-Za-z0-9_-]*)(\\s*:)',
+                r'([,{]\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)',
                 lambda match: match.group(1) + json.dumps(match.group(2)) + match.group(3),
                 cleaned,
             )
-            repaired = re.sub(r',\\s*([}\\]])', r'\\1', repaired)
+            repaired = re.sub(r',\s*([}\]])', r'\1', repaired)
             payload = json.loads(repaired)
         if not isinstance(payload, dict):
             raise ValueError("The model response must contain one JSON object.")
