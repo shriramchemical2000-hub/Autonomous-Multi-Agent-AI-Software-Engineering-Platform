@@ -124,3 +124,27 @@ def test_requirements_analyst_normalizes_structured_non_functional_requirements(
     assert "agreed target" in nfrs[0]
     assert "Responsive Design" in nfrs[1]
     assert "44px minimum" in nfrs[1]
+
+
+def test_requirements_analyst_normalizes_structured_open_questions():
+    structured = dict(VALID_DOCUMENT)
+    structured["open_questions"] = [
+        {
+            "question": "Which payment gateway should be used?",
+            "status": "open",
+            "context": "Consider transaction fees",
+        },
+        {
+            "question": "Which recommendation framework should be used?",
+            "status": "to be decided",
+        },
+    ]
+    provider = FakeProvider([json.dumps(structured)])
+    result = RequirementsAnalyst(provider).run(make_context())
+    questions = result.artifact["requirements"]["open_questions"]
+
+    assert len(questions) == 2
+    assert "Which payment gateway should be used?" in questions[0]
+    assert "Status: open" in questions[0]
+    assert "transaction fees" in questions[0]
+    assert "Which recommendation framework should be used?" in questions[1]
