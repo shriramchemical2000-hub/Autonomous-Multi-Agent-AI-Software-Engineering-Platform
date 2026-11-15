@@ -547,13 +547,15 @@ class GeneratedSourceFile(BaseModel):
 
 
 class CodeGenerationDocument(BaseModel):
-    """A bounded, reviewable collection of generated text source files."""
+    """A compact first implementation slice that fits provider output budgets."""
 
     model_config = ConfigDict(extra="forbid")
 
-    implementation_summary: str = Field(min_length=1)
-    implementation_notes: list[str] = Field(default_factory=list)
-    files: list[GeneratedSourceFile] = Field(min_length=1, max_length=30)
+    implementation_summary: str = Field(min_length=1, max_length=1200)
+    implementation_notes: list[str] = Field(default_factory=list, max_length=8)
+    # Keep the first generation pass small enough to avoid provider-side truncation.
+    # Further functionality can be added in later, independently reviewable stages.
+    files: list[GeneratedSourceFile] = Field(min_length=1, max_length=5)
 
     @model_validator(mode="after")
     def validate_bundle(self):
@@ -561,8 +563,10 @@ class CodeGenerationDocument(BaseModel):
         if len(paths) != len(set(paths)):
             raise ValueError("Generated bundle contains duplicate file paths.")
         total_bytes = sum(len(item.content.encode("utf-8")) for item in self.files)
-        if total_bytes > 200_000:
-            raise ValueError("Generated bundle exceeds the 200 KB text limit.")
+        if any(len(item.content.encode("utf-8")) > 6_000 for item in self.files):
+            raise ValueError("A generated source file exceeds the 6 KB first-slice limit.")
+        if total_bytes > 12_000:
+            raise ValueError("Generated bundle exceeds the 12 KB first-slice limit.")
         return self
 
 
