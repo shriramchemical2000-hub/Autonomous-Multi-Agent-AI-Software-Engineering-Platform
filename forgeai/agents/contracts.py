@@ -227,13 +227,15 @@ def _render_ui_detail(value: Any) -> str:
 
 
 def _normalize_ui_text_list(value: Any) -> Any:
-    """Accept provider strings or rich structured objects in UI text-list fields."""
+    """Normalize scalar, object, and array values into readable text arrays."""
     if value is None:
         return []
     if isinstance(value, str):
         return [value] if value.strip() else []
+    if isinstance(value, dict):
+        return [_render_ui_detail(value)]
     if not isinstance(value, list):
-        return value
+        return [str(value)]
     return [
         item if isinstance(item, str) else _render_ui_detail(item)
         for item in value
@@ -271,6 +273,43 @@ class ScreenSpecification(BaseModel):
     states_and_feedback: list[str] = Field(default_factory=list)
     validation_and_errors: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_screen_aliases(cls, value: Any) -> Any:
+        """Map common provider naming variants into the stable screen contract."""
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        aliases = {
+            "screen_name": ("name", "title", "page_name", "screen", "page"),
+            "purpose": ("description", "screen_purpose", "goal"),
+            "primary_user": ("persona", "primary_persona", "user", "audience"),
+            "layout_regions": ("layout", "regions", "sections", "content_regions"),
+            "key_components": ("components", "ui_components", "elements"),
+            "primary_action": ("primary_cta", "main_action", "call_to_action", "cta"),
+            "states_and_feedback": ("states", "feedback_states", "ui_states"),
+            "validation_and_errors": ("validation", "errors", "error_handling"),
+        }
+        for target, candidates in aliases.items():
+            if target not in normalized:
+                for candidate in candidates:
+                    if candidate in normalized:
+                        normalized[target] = normalized.pop(candidate)
+                        break
+        # Some providers return extra descriptive metadata; preserve it in the
+        # screen purpose instead of letting harmless metadata invalidate the design.
+        known = set(aliases) | {alias for group in aliases.values() for alias in group}
+        extra_details = []
+        for key in list(normalized):
+            if key not in known:
+                detail = normalized.pop(key)
+                if detail not in (None, "", [], {}):
+                    extra_details.append(f"{key.replace('_', ' ').title()}: {_render_ui_detail(detail)}")
+        if extra_details:
+            existing = normalized.get("purpose", "Screen experience")
+            normalized["purpose"] = str(existing) + " " + "; ".join(extra_details)
+        return normalized
+
     @field_validator("layout_regions", "key_components", "states_and_feedback", "validation_and_errors", mode="before")
     @classmethod
     def normalize_screen_detail_lists(cls, value: Any) -> Any:
@@ -299,6 +338,43 @@ class DesignSystemSpecification(BaseModel):
     spacing_and_layout_rules: list[str] = Field(default_factory=list)
     visual_principles: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_design_system_aliases(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return {"visual_principles": [value]}
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        aliases = {
+            "colour_tokens": ("color_tokens", "colors", "colours", "color_palette", "palette"),
+            "typography_scale": ("typography", "type_scale", "font_scale"),
+            "spacing_and_layout_rules": ("spacing", "layout_rules", "spacing_rules", "grid_rules"),
+            "visual_principles": ("principles", "visual_direction", "design_principles"),
+        }
+        for target, candidates in aliases.items():
+            if target not in normalized:
+                for candidate in candidates:
+                    if candidate in normalized:
+                        normalized[target] = normalized.pop(candidate)
+                        break
+        # The design system is descriptive; fold noncanonical token groups into
+        # the closest canonical field rather than discarding useful model detail.
+        known = set(aliases) | {alias for group in aliases.values() for alias in group}
+        extra = []
+        for key in list(normalized):
+            if key not in known:
+                detail = normalized.pop(key)
+                if detail not in (None, "", [], {}):
+                    extra.append(f"{key.replace('_', ' ').title()}: {_render_ui_detail(detail)}")
+        if extra:
+            normalized.setdefault("visual_principles", [])
+            current = normalized["visual_principles"]
+            if isinstance(current, str):
+                current = [current]
+            normalized["visual_principles"] = list(current or []) + extra
+        return normalized
+
     @field_validator("colour_tokens", "typography_scale", "spacing_and_layout_rules", "visual_principles", mode="before")
     @classmethod
     def normalize_design_system_lists(cls, value: Any) -> Any:
@@ -307,6 +383,59 @@ class DesignSystemSpecification(BaseModel):
 
 class UIUXDesignDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_document_shape(cls, value: Any) -> Any:
+        """Accept common alternate top-level UI/UX response shapes."""
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        aliases = {
+            "design_overview": ("overview", "design_summary", "experience_overview", "ux_overview"),
+            "design_goals": ("goals", "experience_goals", "ux_goals"),
+            "user_journeys": ("journeys", "customer_journeys", "experience_flows"),
+            "navigation_structure": ("navigation", "navigation_map", "navigation_tree", "site_map", "sitemap"),
+            "screen_specifications": ("screens", "screen_specs", "screen_designs", "pages", "page_specifications", "ui_screens"),
+            "reusable_components": ("components", "ui_components", "component_library"),
+            "design_system": ("visual_design_system", "design_tokens", "style_guide", "visual_system"),
+            "responsive_behaviour": ("responsive_behavior", "responsive_design", "breakpoint_behaviour"),
+            "accessibility_requirements": ("accessibility", "accessibility_standards"),
+            "usability_risks": ("usability_concerns", "ux_risks"),
+            "open_design_questions": ("design_questions", "open_questions"),
+        }
+        for target, candidates in aliases.items():
+            if target not in normalized:
+                for candidate in candidates:
+                    if candidate in normalized:
+                        normalized[target] = normalized.pop(candidate)
+                        break
+
+        navigation = normalized.get("navigation_structure")
+        if isinstance(navigation, dict):
+            # Navigation is often represented as {top_level: [], footer: [], ...}.
+            # Keep each group label and all nested labels/routes in the text output.
+            normalized["navigation_structure"] = [
+                {"label": section.replace("_", " ").title(), "items": entries}
+                for section, entries in navigation.items()
+                if entries not in (None, "", [], {})
+            ]
+
+        screens = normalized.get("screen_specifications")
+        if isinstance(screens, dict):
+            # Also accept a map keyed by screen name, e.g. {"Home": {...}}.
+            converted = []
+            for name, details in screens.items():
+                if isinstance(details, dict):
+                    item = dict(details)
+                    item.setdefault("screen_name", str(name))
+                    converted.append(item)
+                else:
+                    converted.append({"screen_name": str(name), "purpose": _render_ui_detail(details),
+                                      "primary_user": "Primary user", "layout_regions": ["Main content"],
+                                      "primary_action": "Complete the primary task"})
+            normalized["screen_specifications"] = converted
+        return normalized
 
     design_overview: str = Field(min_length=1)
     design_goals: list[str] = Field(default_factory=list)
@@ -346,9 +475,17 @@ class UIUXDesignDocument(BaseModel):
         return normalized
     user_journeys: list[UserJourney] = Field(default_factory=list)
     navigation_structure: list[str] = Field(default_factory=list)
-    screen_specifications: list[ScreenSpecification] = Field(min_length=1)
+    screen_specifications: list[ScreenSpecification] = Field(default_factory=lambda: [
+        ScreenSpecification(
+            screen_name="Primary Experience — draft fallback",
+            purpose="The model omitted screen-level details. This placeholder must be replaced with a product-specific screen specification during human review.",
+            primary_user="Primary user",
+            layout_regions=["Global header and navigation", "Main task content", "Contextual feedback and primary action"],
+            primary_action="Complete the primary task",
+        )
+    ])
     reusable_components: list[UIComponentSpecification] = Field(default_factory=list)
-    design_system: DesignSystemSpecification
+    design_system: DesignSystemSpecification = Field(default_factory=DesignSystemSpecification)
     responsive_behaviour: list[str] = Field(default_factory=list)
     accessibility_requirements: list[str] = Field(default_factory=list)
     usability_risks: list[str] = Field(default_factory=list)
