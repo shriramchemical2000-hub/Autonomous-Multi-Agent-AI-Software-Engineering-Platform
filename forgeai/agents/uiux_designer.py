@@ -34,17 +34,22 @@ Limit each array item to one or two concise sentences. Avoid repeating the same 
 fields. Make screen specifications actionable but concise. Do not output source code or claim
 usability testing has occurred.
 
-Return exactly one JSON object and no Markdown fences with keys:
+Return exactly one JSON object and no Markdown fences. Use these exact top-level keys:
 design_overview, design_goals, personas, user_journeys, navigation_structure,
 screen_specifications, reusable_components, design_system, responsive_behaviour,
 accessibility_requirements, usability_risks, open_design_questions.
+Do not rename keys, omit required sections, or wrap list fields in objects.
+navigation_structure MUST be an array, even when it contains grouped navigation.
+screen_specifications MUST be an array with at least one complete screen object.
+design_system MUST be an object with all four named arrays.
 Journey fields: persona, goal, entry_point, steps, success_outcome.
 Each step: step (integer >= 1), user_action, system_response, decision_or_exception (string or null).
 Screen fields: screen_name, purpose, primary_user, layout_regions, key_components,
 primary_action, states_and_feedback, validation_and_errors.
 Reusable component fields: component_name, purpose, behaviour, accessibility_notes.
 design_system fields: colour_tokens, typography_scale, spacing_and_layout_rules, visual_principles.
-Do not add keys outside this schema. Provide at least one complete screen specification.
+Every field ending in a plural or explicitly described as an array must be a JSON array, not a scalar or object.
+Do not add keys outside this schema. Provide all sections even when a section has no content; use an empty array where appropriate.
 """
 
 
@@ -120,6 +125,16 @@ class UIUXDesigner:
             try:
                 document = self._parse_response(raw)
                 warnings = []
+                if "screen_specifications" not in document.model_fields_set:
+                    warnings.append(
+                        "The model omitted screen specifications; a clearly marked fallback screen was inserted. "
+                        "Replace it with product-specific layouts before approving the design."
+                    )
+                if "design_system" not in document.model_fields_set:
+                    warnings.append(
+                        "The model omitted the design system; default empty design tokens were inserted. "
+                        "Complete the visual system before approving the design."
+                    )
                 if document.usability_risks:
                     warnings.append(f"{len(document.usability_risks)} usability risk(s) require human review.")
                 if document.open_design_questions:
