@@ -204,6 +204,40 @@ class ArchitectureDocument(BaseModel):
         return value
 
 
+def _render_ui_detail(value: Any) -> str:
+    """Render nested UI/navigation objects as readable text without losing details."""
+    if isinstance(value, dict):
+        label = value.get("label") or value.get("name") or value.get("region") or value.get("title")
+        route = value.get("route") or value.get("path") or value.get("url")
+        parts: list[str] = []
+        if label:
+            parts.append(str(label))
+        if route:
+            parts.append(f"({route})")
+        for key, detail in value.items():
+            if key in {"label", "name", "region", "title", "route", "path", "url"} or detail in (None, "", [], {}):
+                continue
+            rendered = _render_ui_detail(detail)
+            if rendered:
+                parts.append(f"{key.replace('_', ' ').title()}: {rendered}")
+        return " — ".join(parts) if parts else str(value)
+    if isinstance(value, list):
+        return "; ".join(_render_ui_detail(item) for item in value if item not in (None, "", [], {}))
+    return str(value)
+
+
+def _normalize_ui_text_list(value: Any) -> Any:
+    """Accept provider strings or rich structured objects in UI text-list fields."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return value
+    return [
+        item if isinstance(item, str) else _render_ui_detail(item)
+        for item in value
+    ]
+
+
 class UserJourneyStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -235,6 +269,11 @@ class ScreenSpecification(BaseModel):
     states_and_feedback: list[str] = Field(default_factory=list)
     validation_and_errors: list[str] = Field(default_factory=list)
 
+    @field_validator("layout_regions", "key_components", "states_and_feedback", "validation_and_errors", mode="before")
+    @classmethod
+    def normalize_screen_detail_lists(cls, value: Any) -> Any:
+        return _normalize_ui_text_list(value)
+
 
 class UIComponentSpecification(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -244,6 +283,11 @@ class UIComponentSpecification(BaseModel):
     behaviour: str = Field(min_length=1)
     accessibility_notes: list[str] = Field(default_factory=list)
 
+    @field_validator("accessibility_notes", mode="before")
+    @classmethod
+    def normalize_accessibility_notes(cls, value: Any) -> Any:
+        return _normalize_ui_text_list(value)
+
 
 class DesignSystemSpecification(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -252,6 +296,11 @@ class DesignSystemSpecification(BaseModel):
     typography_scale: list[str] = Field(default_factory=list)
     spacing_and_layout_rules: list[str] = Field(default_factory=list)
     visual_principles: list[str] = Field(default_factory=list)
+
+    @field_validator("colour_tokens", "typography_scale", "spacing_and_layout_rules", "visual_principles", mode="before")
+    @classmethod
+    def normalize_design_system_lists(cls, value: Any) -> Any:
+        return _normalize_ui_text_list(value)
 
 
 class UIUXDesignDocument(BaseModel):
@@ -302,6 +351,15 @@ class UIUXDesignDocument(BaseModel):
     accessibility_requirements: list[str] = Field(default_factory=list)
     usability_risks: list[str] = Field(default_factory=list)
     open_design_questions: list[str] = Field(default_factory=list)
+
+    @field_validator(
+        "design_goals", "navigation_structure", "responsive_behaviour",
+        "accessibility_requirements", "usability_risks", "open_design_questions",
+        mode="before",
+    )
+    @classmethod
+    def normalize_ui_detail_lists(cls, value: Any) -> Any:
+        return _normalize_ui_text_list(value)
 
 
 class GeneratedSourceFile(BaseModel):
