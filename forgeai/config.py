@@ -18,7 +18,7 @@ class Settings:
     gemini_api_key: str
     model_name: str
     nvidia_api_key: str = ""
-    nvidia_model_name: str = "meta/llama-3.3-70b-instruct"
+    nvidia_model_name: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
     @property
     def has_model_api_key(self) -> bool:
@@ -44,7 +44,7 @@ def get_settings() -> Settings:
             # Keep local development and non-Streamlit test environments usable.
             api_key = ""
     nvidia_api_key = os.getenv("NVIDIA_API_KEY", "").strip()
-    nvidia_model = os.getenv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct").strip() or "meta/llama-3.3-70b-instruct"
+    nvidia_model = os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b").strip() or "nvidia/nemotron-3.5-lightning-30b-a3b"
     if not nvidia_api_key:
         try:
             import streamlit as st
