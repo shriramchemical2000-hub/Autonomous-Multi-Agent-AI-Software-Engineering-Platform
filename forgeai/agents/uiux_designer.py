@@ -65,17 +65,30 @@ class UIUXDesigner:
             cleaned = match.group(1).strip()
         try:
             payload = json.loads(cleaned)
-        except json.JSONDecodeError:
-            # Recover common formatting defects without an extra runtime package.
-            # Quote unquoted object keys and remove trailing commas only; the
-            # strict Pydantic schema below still validates the resulting object.
-            repaired = re.sub(
-                r'([,{]\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)',
-                lambda match: match.group(1) + json.dumps(match.group(2)) + match.group(3),
-                cleaned,
-            )
-            repaired = re.sub(r',\s*([}\]])', r'\1', repaired)
-            payload = json.loads(repaired)
+        except json.JSONDecodeError as original_error:
+            payload = None
+            repair_errors: list[str] = []
+            if repair_json is not None:
+                try:
+                    payload = repair_json(cleaned, return_objects=True)
+                except Exception as repair_error:
+                    repair_errors.append(f"json-repair: {type(repair_error).__name__}")
+            if payload is None:
+                # Dependency-free fallback handles only unquoted keys and trailing
+                # commas. The strict Pydantic schema still validates all fields.
+                repaired = re.sub(
+                    r'([,{]\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)',
+                    lambda item: item.group(1) + json.dumps(item.group(2)) + item.group(3),
+                    cleaned,
+                )
+                repaired = re.sub(r',\s*([}\]])', r'\1', repaired)
+                try:
+                    payload = json.loads(repaired)
+                except json.JSONDecodeError as fallback_error:
+                    detail = f"Original JSON error: {original_error}. Fallback: {fallback_error}."
+                    if repair_errors:
+                        detail += " " + "; ".join(repair_errors)
+                    raise json.JSONDecodeError(detail, cleaned, fallback_error.pos) from fallback_error
         if not isinstance(payload, dict):
             raise ValueError("The model response must contain one JSON object.")
         return UIUXDesignDocument.model_validate(payload)
