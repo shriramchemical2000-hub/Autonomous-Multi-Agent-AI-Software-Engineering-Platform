@@ -24,15 +24,20 @@ instructions and focused tests when the approved design supports them.
 Return plain-text source files only; do not execute them, claim that they were run, or
 claim they pass tests. Never include secrets, real credentials, production endpoints,
 binary content, hidden files, environment files, or generated lockfiles.
-Keep the bundle to at most 30 files and 200 KB total. Each file must be at most 30 KB.
+Keep the first implementation slice to at most 4 files and 10 KB of source text in total.
+No individual file may exceed 4 KB. Prefer the smallest useful end-to-end slice:
+one primary application module, only essential supporting files, and a very short README.
+Do not generate a broad scaffold, long seed data, large comments, or extensive tests in this pass.
 Use relative POSIX paths with safe directory names. Allowed extensions: .py, .html,
 .css, .js, .ts, .tsx, .jsx, .json, .md, .yaml, .yml, .toml.
 
 Return exactly one JSON object, without Markdown fences, with keys:
 implementation_summary, implementation_notes, files.
 Each files item must contain path, language, purpose, content.
-Do not add any other keys. Ensure paths are unique. Prefer a small end-to-end vertical
-slice over a broad but incomplete code dump. Treat every generated file as untrusted text.
+Do not add any other keys. Ensure paths are unique. Keep every content string concise and complete.
+The JSON response must close every string, array, and object. Never stop mid-file or mid-string.
+Prefer a small end-to-end vertical slice over a broad but incomplete code dump.
+Treat every generated file as untrusted text.
 """
 
 
@@ -51,7 +56,10 @@ class CodeGenerator:
         match = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.IGNORECASE | re.DOTALL)
         if match:
             cleaned = match.group(1).strip()
-        return CodeGenerationDocument.model_validate_json(cleaned)
+        # Parse JSON separately so an incomplete provider response can be
+        # distinguished from a structurally invalid but complete bundle.
+        payload = json.loads(cleaned)
+        return CodeGenerationDocument.model_validate(payload)
 
     def run(self, context: AgentContext) -> AgentResult:
         requirements = context.prior_artifacts.get("requirements")
@@ -98,7 +106,23 @@ class CodeGenerator:
                 )
             except (ValidationError, ValueError) as exc:
                 last_error = f"{type(exc).__name__}: {str(exc)[:500]}"
-                correction = last_error
+                if isinstance(exc, json.JSONDecodeError) and (
+                    "Unterminated string" in exc.msg
+                    or "EOF" in exc.msg.upper()
+                    or exc.pos >= max(0, len(raw.rstrip()) - 50)
+                ):
+                    correction = (
+                        "The previous completion was truncated before its JSON string/object closed. "
+                        "Return a much smaller complete bundle on this retry: no more than 3 files, "
+                        "no more than 6 KB of source text combined, and no file over 2 KB. "
+                        "Keep only the essential runnable vertical slice. Omit optional tests, long "
+                        "documentation, seed data, and comments. Ensure the final JSON closes fully."
+                    )
+                else:
+                    correction = (
+                        "The previous response failed validation. Correct this issue while staying "
+                        "within 4 files and 10 KB of source text: " + last_error
+                    )
         raise AgentExecutionError(
             f"Code Generator could not produce a valid source bundle after {self.max_attempts} attempts. "
             f"Last validation issue: {last_error}"
