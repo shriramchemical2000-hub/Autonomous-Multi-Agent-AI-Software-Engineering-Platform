@@ -7,7 +7,7 @@ from forgeai.providers.base import ModelProviderError
 from forgeai.providers.nvidia import NvidiaProvider
 
 
-def _settings(tmp_path, *, key="test-nvidia-key", model="meta/llama-3.3-70b-instruct"):
+def _settings(tmp_path, *, key="test-nvidia-key", model="nvidia/nemotron-3.5-lightning-30b-a3b"):
     return Settings(
         environment="test",
         database_path=tmp_path / "test.db",
@@ -55,7 +55,9 @@ def test_nvidia_provider_uses_nim_and_returns_text(tmp_path, monkeypatch):
     assert result == "architecture ready"
     assert calls["client"]["base_url"] == "https://integrate.api.nvidia.com/v1"
     assert calls["client"]["api_key"] == "test-nvidia-key"
-    assert calls["model"] == "meta/llama-3.3-70b-instruct"
+    assert calls["model"] == "nvidia/nemotron-3.5-lightning-30b-a3b"
+    assert calls["max_tokens"] == 16384
+    assert calls["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     assert calls["messages"][0] == {"role": "system", "content": "system prompt"}
     assert calls["messages"][1] == {"role": "user", "content": "user prompt"}
 
