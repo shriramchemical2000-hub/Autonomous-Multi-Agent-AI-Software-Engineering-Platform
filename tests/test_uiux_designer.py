@@ -292,3 +292,28 @@ def test_uiux_designer_flags_fallback_when_screens_and_design_system_are_omitted
     assert any("omitted screen specifications" in warning for warning in result.warnings)
     assert any("omitted the design system" in warning for warning in result.warnings)
 
+def test_uiux_designer_preserves_component_variants_and_extra_metadata():
+    design = dict(VALID_DESIGN)
+    design["reusable_components"] = [
+        {
+            "component_name": "Product search",
+            "purpose": "Search the catalogue.",
+            "behaviour": "Filters products by the entered query.",
+            "variants": ["with_clear_button", "compact_version"],
+            "accessibility_notes": ["Has an accessible name and visible focus."],
+            "interaction_states": ["idle", "typing", "results", "empty"],
+        },
+        {
+            "component_name": "Product filter",
+            "purpose": "Narrow the product listing.",
+            "behaviour": "Applies selected filters.",
+            "variants": ["with_clear_all", "single_selection"],
+        },
+    ]
+    provider = FakeProvider([json.dumps(design)])
+    result = UIUXDesigner(provider).run(make_context())
+    components = result.artifact["uiux_design"]["reusable_components"]
+    assert components[0]["variants"] == ["with_clear_button", "compact_version"]
+    assert components[1]["variants"] == ["with_clear_all", "single_selection"]
+    assert components[0]["interaction_states"] == ["idle", "typing", "results", "empty"]
+
