@@ -7,6 +7,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
+try:
+    from json_repair import repair_json
+except ImportError:  # Keep app startup safe if a deployment has not installed optional repair support yet.
+    repair_json = None
+
 from forgeai.agents.contracts import AgentContext, AgentResult, UIUXDesignDocument
 from forgeai.providers.base import ModelProvider
 
@@ -23,11 +28,11 @@ conflict with either artifact. Explain any necessary assumptions as open design 
 Design for clarity, task completion, consistency, responsive behaviour, accessibility,
 empty/loading/error/success states, validation, and keyboard/screen-reader use.
 Create meaningful user journeys, navigation structure, screen-by-screen layout specifications,
-reusable UI components, and a coherent design system. Keep the response complete but bounded:
-3-5 user journeys, 6-10 screen specifications, and 8-12 reusable components. Use concise,
-actionable strings in arrays; avoid repeating the same detail across fields. Make screen
-specifications concrete enough for a frontend engineer to implement. Do not output source code
-or claim usability testing has occurred.
+reusable UI components, and a coherent design system. Keep the response compact and bounded:
+2-3 user journeys with 3-5 steps each, 5-7 screen specifications, and 6-8 reusable components.
+Limit each array item to one or two concise sentences. Avoid repeating the same detail across
+fields. Make screen specifications actionable but concise. Do not output source code or claim
+usability testing has occurred.
 
 Return exactly one JSON object and no Markdown fences with keys:
 design_overview, design_goals, personas, user_journeys, navigation_structure,
