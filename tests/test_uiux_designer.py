@@ -111,3 +111,41 @@ def test_uiux_designer_stops_after_two_invalid_responses():
     with pytest.raises(AgentExecutionError, match="after 2 attempts"):
         UIUXDesigner(provider).run(make_context())
     assert len(provider.calls) == 2
+
+
+def test_uiux_designer_normalizes_structured_personas_without_losing_details():
+    design = dict(VALID_DESIGN)
+    design["personas"] = [
+        {
+            "name": "Customer",
+            "description": "A shopper comparing products.",
+            "goals": ["Find suitable products", "Complete checkout"],
+            "pain_points": ["Unclear order status", "Confusing filters"],
+        },
+        {
+            "name": "Site Administrator",
+            "responsibilities": ["Manage catalogue", "Monitor inventory"],
+            "needs": ["Clear navigation", "Fast access to reports"],
+        },
+    ]
+    provider = FakeProvider([json.dumps(design)])
+    result = UIUXDesigner(provider).run(make_context())
+    personas = result.artifact["uiux_design"]["personas"]
+    assert len(personas) == 2
+    assert personas[0].startswith("Customer")
+    assert "Unclear order status" in personas[0]
+    assert "Complete checkout" in personas[0]
+    assert personas[1].startswith("Site Administrator")
+    assert "Monitor inventory" in personas[1]
+
+
+def test_uiux_persona_normalizer_accepts_strings_and_none():
+    from forgeai.agents.contracts import UIUXDesignDocument
+
+    design = dict(VALID_DESIGN)
+    design["personas"] = ["Customer", {"name": "Admin", "goals": ["Manage users"]}]
+    parsed = UIUXDesignDocument.model_validate(design)
+    assert parsed.personas[0] == "Customer"
+    assert parsed.personas[1].startswith("Admin")
+    design["personas"] = None
+    assert UIUXDesignDocument.model_validate(design).personas == []
