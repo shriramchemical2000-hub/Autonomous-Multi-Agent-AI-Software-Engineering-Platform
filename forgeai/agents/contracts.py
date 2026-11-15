@@ -61,6 +61,51 @@ class RequirementsDocument(BaseModel):
     non_functional_requirements: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
 
+    @field_validator("non_functional_requirements", mode="before")
+    @classmethod
+    def normalize_non_functional_requirements(cls, value: Any) -> Any:
+        """Accept concise strings or structured NFR objects from model providers.
+
+        The UI and downstream agents consume a stable list of readable strings.
+        Preserve structured detail instead of failing the whole artifact when a
+        model returns {title, description, acceptance_criteria} objects.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return value
+        normalized: list[Any] = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append(item)
+            elif isinstance(item, dict):
+                parts: list[str] = []
+                title = item.get("title") or item.get("name")
+                description = item.get("description") or item.get("requirement")
+                category = item.get("category") or item.get("type")
+                if category:
+                    parts.append(f"{category}:")
+                if title:
+                    parts.append(str(title))
+                if description:
+                    parts.append(str(description))
+                criteria = item.get("acceptance_criteria") or item.get("criteria") or []
+                if isinstance(criteria, str):
+                    criteria = [criteria]
+                if isinstance(criteria, list) and criteria:
+                    parts.append("Acceptance criteria: " + "; ".join(str(c) for c in criteria))
+                # Retain any additional model-provided detail without leaking
+                # arbitrary nested objects into the rendered specification.
+                known = {"title", "name", "description", "requirement", "category", "type",
+                         "acceptance_criteria", "criteria"}
+                for key, detail in item.items():
+                    if key not in known and detail not in (None, "", [], {}):
+                        parts.append(f"{key.replace('_', ' ').title()}: {detail}")
+                normalized.append(" — ".join(parts) if parts else str(item))
+            else:
+                normalized.append(item)
+        return normalized
+
 
 class ArchitectureComponent(BaseModel):
     model_config = ConfigDict(extra="forbid")
