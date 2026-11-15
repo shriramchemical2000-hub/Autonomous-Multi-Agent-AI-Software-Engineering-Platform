@@ -317,16 +317,20 @@ class ScreenSpecification(BaseModel):
 
 
 class UIComponentSpecification(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Component design metadata is intentionally extensible: providers commonly
+    # return useful details such as variants, states, props, or interaction notes.
+    # Preserve those fields instead of failing the complete UX document.
+    model_config = ConfigDict(extra="allow")
 
     component_name: str = Field(min_length=1)
     purpose: str = Field(min_length=1)
     behaviour: str = Field(min_length=1)
+    variants: list[str] = Field(default_factory=list)
     accessibility_notes: list[str] = Field(default_factory=list)
 
-    @field_validator("accessibility_notes", mode="before")
+    @field_validator("variants", "accessibility_notes", mode="before")
     @classmethod
-    def normalize_accessibility_notes(cls, value: Any) -> Any:
+    def normalize_component_text_lists(cls, value: Any) -> Any:
         return _normalize_ui_text_list(value)
 
 
