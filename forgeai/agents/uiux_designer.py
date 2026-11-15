@@ -5,6 +5,8 @@ import json
 import re
 from typing import Any
 
+from json_repair import repair_json
+
 from pydantic import ValidationError
 
 from forgeai.agents.contracts import AgentContext, AgentResult, UIUXDesignDocument
@@ -23,9 +25,11 @@ conflict with either artifact. Explain any necessary assumptions as open design 
 Design for clarity, task completion, consistency, responsive behaviour, accessibility,
 empty/loading/error/success states, validation, and keyboard/screen-reader use.
 Create meaningful user journeys, navigation structure, screen-by-screen layout specifications,
-reusable UI components, and a coherent design system. Make screen descriptions concrete enough
-for a frontend engineer to implement without guessing. Do not output source code or claim
-usability testing has occurred.
+reusable UI components, and a coherent design system. Keep the response complete but bounded:
+3-5 user journeys, 6-10 screen specifications, and 8-12 reusable components. Use concise,
+actionable strings in arrays; avoid repeating the same detail across fields. Make screen
+specifications concrete enough for a frontend engineer to implement. Do not output source code
+or claim usability testing has occurred.
 
 Return exactly one JSON object and no Markdown fences with keys:
 design_overview, design_goals, personas, user_journeys, navigation_structure,
@@ -56,7 +60,15 @@ class UIUXDesigner:
         match = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.IGNORECASE | re.DOTALL)
         if match:
             cleaned = match.group(1).strip()
-        return UIUXDesignDocument.model_validate(json.loads(cleaned))
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Repair minor syntax defects in long model-generated JSON. Pydantic
+            # still enforces the complete, strict UI/UX contract after repair.
+            payload = repair_json(cleaned, return_objects=True)
+        if not isinstance(payload, dict):
+            raise ValueError("The model response must contain one JSON object.")
+        return UIUXDesignDocument.model_validate(payload)
 
     def run(self, context: AgentContext) -> AgentResult:
         requirements = context.prior_artifacts.get("requirements")
