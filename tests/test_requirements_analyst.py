@@ -98,3 +98,29 @@ def test_requirements_analyst_rejects_unexpected_schema_fields():
     with pytest.raises(AgentExecutionError, match="valid specification"):
         RequirementsAnalyst(provider).run(make_context())
     assert len(provider.calls) == 2
+
+
+def test_requirements_analyst_normalizes_structured_non_functional_requirements():
+    structured = dict(VALID_DOCUMENT)
+    structured["non_functional_requirements"] = [
+        {
+            "title": "System Performance",
+            "description": "The system should respond within agreed targets for standard reports",
+            "acceptance_criteria": ["Standard reports complete within the agreed target"],
+        },
+        {
+            "title": "Responsive Design",
+            "description": "The interface supports mobile and desktop layouts",
+            "criteria": ["Touch targets follow accessibility guidelines (44px minimum)"],
+        },
+    ]
+    provider = FakeProvider([json.dumps(structured)])
+    result = RequirementsAnalyst(provider).run(make_context())
+    nfrs = result.artifact["requirements"]["non_functional_requirements"]
+
+    assert len(nfrs) == 2
+    assert "System Performance" in nfrs[0]
+    assert "standard reports" in nfrs[0]
+    assert "agreed target" in nfrs[0]
+    assert "Responsive Design" in nfrs[1]
+    assert "44px minimum" in nfrs[1]
