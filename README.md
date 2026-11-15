@@ -2,7 +2,7 @@
 
 ForgeAI is a human-supervised AI software engineering workspace that turns a product brief into traceable engineering deliverables through specialist agents, structured validation, a shared LangGraph workflow, versioned artifacts, and explicit human approval gates.
 
-**Current status: Phase 10 delivery exports, deterministic readiness scoring, deployment guidance, and evaluation protocol are implemented. Actual hosting/deployment remains an operator task.** Seven specialists are executable: Requirements Analyst, Software Architect, UI/UX Designer, Code Generator, QA Engineer, Code Reviewer, and Code Repair Engineer. The application has automated unit tests for their contracts and workflow gates. A live Gemini request still requires a user-supplied API key and has not been verified by repository CI.
+**Current status: Phase 10 delivery exports, deterministic readiness scoring, deployment guidance, and evaluation protocol are implemented. Actual hosting/deployment remains an operator task.** Seven specialists are executable: Requirements Analyst, Software Architect, UI/UX Designer, Code Generator, QA Engineer, Code Reviewer, and Code Repair Engineer. The application has automated unit tests for their contracts and workflow gates. A live NVIDIA NIM request requires a user-supplied API key and has not been verified by repository CI.
 
 ## Current capabilities
 
