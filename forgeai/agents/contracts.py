@@ -230,6 +230,8 @@ def _normalize_ui_text_list(value: Any) -> Any:
     """Accept provider strings or rich structured objects in UI text-list fields."""
     if value is None:
         return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
     if not isinstance(value, list):
         return value
     return [
