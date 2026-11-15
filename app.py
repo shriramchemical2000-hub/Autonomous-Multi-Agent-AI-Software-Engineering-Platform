@@ -26,7 +26,7 @@ from forgeai.database import (
     save_project_artifact,
 )
 from forgeai.providers.base import ModelProviderError
-from forgeai.providers.gemini import GeminiProvider
+from forgeai.providers.nvidia import NvidiaProvider
 from forgeai.orchestration.workflow import build_forge_workflow
 from forgeai.execution.docker_runner import DockerTestRunner, docker_runner_enabled
 from forgeai.delivery import ARTIFACT_TYPES, build_delivery_archive, build_delivery_report
@@ -203,14 +203,14 @@ elif page == "Product Studio":
             format_func=lambda p: f"#{p['id']} · {p['name']}",
             key="requirements_project",
         )
-        st.caption("The analyst uses the saved project brief and returns a structured specification. Generation requires a Gemini API key.")
-        if not settings.has_model_api_key:
-            st.warning("Gemini API key not configured. Add GEMINI_API_KEY to your environment variables or a local .env file to enable generation. No key is needed to browse the app.")
-        if st.button("Generate requirements", type="primary", disabled=not settings.has_model_api_key):
+        st.caption("The analyst uses the saved project brief and returns a structured specification. Generation uses the configured NVIDIA NIM API key.")
+        if not settings.has_nvidia_api_key:
+            st.warning("NVIDIA API key not configured. Add NVIDIA_API_KEY to Streamlit Secrets or your local .env file to enable generation. No key is needed to browse the app.")
+        if st.button("Generate requirements", type="primary", disabled=not settings.has_nvidia_api_key):
             with st.spinner("Requirements Analyst is preparing and validating the specification..."):
                 try:
                     context = AgentContext(project_id=selected["id"], user_request=selected["brief"])
-                    workflow = build_forge_workflow(GeminiProvider(settings))
+                    workflow = build_forge_workflow(NvidiaProvider(settings))
                     workflow_result = workflow.invoke({
                         "project_id": selected["id"],
                         "user_request": selected["brief"],
@@ -275,7 +275,7 @@ elif page == "Product Studio":
             st.info("The Software Architect is unlocked after you approve the Requirements Analyst specification. This approval gate prevents architecture from being built on unreviewed requirements.")
         else:
             st.caption("The architect uses the approved requirements as its source of truth. It proposes system components, data entities, API contracts, security considerations, design decisions, and unresolved risks.")
-            if st.button("Generate architecture", type="primary", key=f"generate_architecture_{selected['id']}", disabled=not settings.has_model_api_key):
+            if st.button("Generate architecture", type="primary", key=f"generate_architecture_{selected['id']}", disabled=not settings.has_nvidia_api_key):
                 with st.spinner("Software Architect is designing and validating the system architecture..."):
                     try:
                         context = AgentContext(
@@ -283,7 +283,7 @@ elif page == "Product Studio":
                             user_request=f"Create an architecture for {approved_requirements['content'].get('product_name', selected['name'])}.",
                             prior_artifacts={"requirements": approved_requirements["content"]},
                         )
-                        workflow = build_forge_workflow(GeminiProvider(settings))
+                        workflow = build_forge_workflow(NvidiaProvider(settings))
                         workflow_result = workflow.invoke({
                             "project_id": selected["id"],
                             "user_request": selected["brief"],
@@ -375,10 +375,10 @@ elif page == "Product Studio":
             st.info("The UI/UX Designer is unlocked only after both the latest requirements and architecture artifacts are approved.")
         else:
             st.caption("The designer converts the two approved engineering artifacts into user journeys, navigation, detailed screen specifications, reusable components, design tokens, responsive rules, and accessibility requirements.")
-            if st.button("Generate UI/UX design", type="primary", key=f"generate_uiux_{selected['id']}", disabled=not settings.has_model_api_key):
+            if st.button("Generate UI/UX design", type="primary", key=f"generate_uiux_{selected['id']}", disabled=not settings.has_nvidia_api_key):
                 with st.spinner("UI/UX Designer is preparing the product experience specification..."):
                     try:
-                        workflow = build_forge_workflow(GeminiProvider(settings))
+                        workflow = build_forge_workflow(NvidiaProvider(settings))
                         workflow_result = workflow.invoke({
                             "project_id": selected["id"],
                             "user_request": selected["brief"],
@@ -503,10 +503,10 @@ elif page == "Product Studio":
             st.info("Code generation unlocks only after the latest requirements, architecture, and UI/UX design artifacts are all approved.")
         else:
             st.caption("The generator creates a bounded, text-only source bundle from all three approved artifacts. It does not write to the repository, run code, install dependencies, or execute tests.")
-            if st.button("Generate source code bundle", type="primary", key=f"generate_code_{selected['id']}", disabled=not settings.has_model_api_key):
+            if st.button("Generate source code bundle", type="primary", key=f"generate_code_{selected['id']}", disabled=not settings.has_nvidia_api_key):
                 with st.spinner("Code Generator is creating and validating a bounded source bundle..."):
                     try:
-                        workflow = build_forge_workflow(GeminiProvider(settings))
+                        workflow = build_forge_workflow(NvidiaProvider(settings))
                         workflow_result = workflow.invoke({
                             "project_id": selected["id"],
                             "user_request": selected["brief"],
@@ -584,9 +584,9 @@ elif page == "Product Studio":
             st.info("QA planning unlocks after the latest requirements and source bundle are both human-approved.")
         else:
             st.caption("Creates traceable, risk-based test cases linked to requirement IDs. This phase does not execute the source code or report pass/fail results.")
-            if st.button("Generate QA test plan", type="primary", key=f"generate_qa_{selected['id']}", disabled=not settings.has_model_api_key):
+            if st.button("Generate QA test plan", type="primary", key=f"generate_qa_{selected['id']}", disabled=not settings.has_nvidia_api_key):
                 try:
-                    workflow_result = build_forge_workflow(GeminiProvider(settings)).invoke({
+                    workflow_result = build_forge_workflow(NvidiaProvider(settings)).invoke({
                         "project_id": selected["id"], "user_request": selected["brief"], "requested_stage": "qa",
                         "requirements": latest_requirements["content"], "requirements_approved": True,
                         "code_bundle": code_artifact["content"], "code_bundle_approved": True,
@@ -645,9 +645,9 @@ elif page == "Product Studio":
             st.info("Code review unlocks after the latest requirements and source bundle are both human-approved.")
         else:
             st.caption("Inspects source text for evidence-backed correctness, security, reliability, and maintainability findings. No source is executed.")
-            if st.button("Run static code review", type="primary", key=f"generate_review_{selected['id']}", disabled=not settings.has_model_api_key):
+            if st.button("Run static code review", type="primary", key=f"generate_review_{selected['id']}", disabled=not settings.has_nvidia_api_key):
                 try:
-                    workflow_result = build_forge_workflow(GeminiProvider(settings)).invoke({
+                    workflow_result = build_forge_workflow(NvidiaProvider(settings)).invoke({
                         "project_id": selected["id"], "user_request": selected["brief"], "requested_stage": "review",
                         "requirements": latest_requirements["content"], "requirements_approved": True,
                         "architecture": latest_architecture["content"] if latest_architecture else {},
@@ -782,10 +782,10 @@ elif page == "Product Studio":
                 f"Propose repair · Attempt {repair_attempt}/2",
                 type="primary",
                 key=f"propose_repair_{selected['id']}_{code_artifact['id']}",
-                disabled=not repair_allowed or not settings.has_model_api_key,
+                disabled=not repair_allowed or not settings.has_nvidia_api_key,
             ):
                 try:
-                    repair_result = build_forge_workflow(GeminiProvider(settings)).invoke({
+                    repair_result = build_forge_workflow(NvidiaProvider(settings)).invoke({
                         "project_id": selected["id"],
                         "user_request": selected["brief"],
                         "requested_stage": "repair",
@@ -1003,11 +1003,11 @@ else:
     st.subheader("Runtime")
     st.write(f"Environment: {settings.environment}")
     st.write(f"Database: {settings.database_path}")
-    st.write(f"Model preference: {settings.model_name}")
-    if settings.has_model_api_key:
+    st.write(f"Active provider: NVIDIA NIM · Model: {settings.nvidia_model_name}")
+    if settings.has_nvidia_api_key:
         st.success("A model API key is configured. Implemented specialists can make model requests.")
     else:
-        st.warning("No model API key configured. Add GEMINI_API_KEY to enable live generation.")
+        st.warning("No model API key configured. Add NVIDIA_API_KEY to enable live generation.")
     st.caption("Credentials are read from environment variables or a local .env file. Never commit secrets to GitHub.")
 
 st.divider()
