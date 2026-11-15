@@ -107,6 +107,37 @@ class RequirementsDocument(BaseModel):
         return normalized
 
 
+    @field_validator("open_questions", mode="before")
+    @classmethod
+    def normalize_open_questions(cls, value: Any) -> Any:
+        """Accept plain questions or structured question objects from model providers."""
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return value
+        normalized: list[Any] = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append(item)
+            elif isinstance(item, dict):
+                question = item.get("question") or item.get("title") or item.get("text")
+                if question:
+                    details = [str(question)]
+                    for key, detail in item.items():
+                        if key not in {"question", "title", "text"} and detail not in (None, "", [], {}):
+                            details.append(f"{key.replace('_', ' ').title()}: {detail}")
+                    normalized.append(" — ".join(details))
+                else:
+                    normalized.append("; ".join(
+                        f"{key.replace('_', ' ').title()}: {detail}"
+                        for key, detail in item.items()
+                        if detail not in (None, "", [], {})
+                    ) or str(item))
+            else:
+                normalized.append(item)
+        return normalized
+
+
 class ArchitectureComponent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
