@@ -73,6 +73,16 @@ def test_code_generator_retries_invalid_json_once():
     assert len(provider.calls) == 2
 
 
+def test_code_generator_retries_truncated_response_with_smaller_budget():
+    truncated = json.dumps(VALID_BUNDLE)[:-25]
+    provider = FakeProvider([truncated, json.dumps(VALID_BUNDLE)])
+    result = CodeGenerator(provider).run(make_context())
+    assert result.status == "needs_review"
+    assert len(provider.calls) == 2
+    assert "truncated" in provider.calls[1].lower()
+    assert "no more than 3 files" in provider.calls[1].lower()
+
+
 def test_code_generator_stops_after_two_invalid_responses():
     provider = FakeProvider(["bad", "still bad"])
     with pytest.raises(AgentExecutionError, match="after 2 attempts"):
@@ -102,13 +112,30 @@ def test_generated_bundle_rejects_per_file_and_total_size_limits():
     with pytest.raises(ValidationError):
         CodeGenerationDocument.model_validate(oversized_file)
 
+    file_over_first_slice_limit = {
+        **VALID_BUNDLE,
+        "files": [{**VALID_BUNDLE["files"][0], "content": "x" * 6001}],
+    }
+    with pytest.raises(ValidationError, match="6 KB"):
+        CodeGenerationDocument.model_validate(file_over_first_slice_limit)
+
     many_files = [
-        {"path": f"src/file_{index}.py", "language": "python", "purpose": "test", "content": "x" * 10000}
-        for index in range(21)
+        {"path": f"src/file_{index}.py", "language": "python", "purpose": "test", "content": "x"}
+        for index in range(6)
     ]
-    oversized_bundle = {**VALID_BUNDLE, "files": many_files}
-    with pytest.raises(ValidationError, match="200 KB"):
-        CodeGenerationDocument.model_validate(oversized_bundle)
+    too_many_files = {**VALID_BUNDLE, "files": many_files}
+    with pytest.raises(ValidationError):
+        CodeGenerationDocument.model_validate(too_many_files)
+
+    large_bundle = {
+        **VALID_BUNDLE,
+        "files": [
+            {"path": f"src/file_{index}.py", "language": "python", "purpose": "test", "content": "x" * 4500}
+            for index in range(3)
+        ],
+    }
+    with pytest.raises(ValidationError, match="12 KB"):
+        CodeGenerationDocument.model_validate(large_bundle)
 
 
 @pytest.mark.parametrize("reserved_path", [
