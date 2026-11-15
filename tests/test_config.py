@@ -12,4 +12,4 @@ def test_settings_have_safe_defaults(monkeypatch):
     assert settings.model_name == "gemini-3.8-flash"
     assert settings.nvidia_api_key == ""
     assert settings.has_nvidia_api_key is False
-    assert settings.nvidia_model_name == "meta/llama-3.3-70b-instruct"
+    assert settings.nvidia_model_name == "nvidia/nemotron-3.5-lightning-30b-a3b"
