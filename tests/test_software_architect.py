@@ -132,3 +132,30 @@ def test_architect_normalizes_scalar_security_and_design_notes():
     assert design["design_decisions"] == [
         "Selected modular monolith architecture with asynchronous workers for report generation."
     ]
+
+
+def test_architect_normalizes_scalar_risks_and_proposed_decisions_alias():
+    architecture = dict(VALID_ARCHITECTURE)
+    architecture["unresolved_risks"] = (
+        "Payment gateway integration remains subject to provider approval before production deployment."
+    )
+    architecture.pop("design_decisions")
+    architecture["proposed_decisions"] = (
+        "For monolithic versus microservices, begin with a modular monolith and retain microservices as a future extension."
+    )
+    provider = FakeProvider([json.dumps(architecture)])
+    context = AgentContext(
+        project_id=7,
+        user_request="Design the approved product.",
+        prior_artifacts={"requirements": {"product_name": "Appointment Platform"}},
+    )
+
+    result = SoftwareArchitect(provider).run(context)
+    design = result.artifact["architecture"]
+
+    assert design["unresolved_risks"] == [
+        "Payment gateway integration remains subject to provider approval before production deployment."
+    ]
+    assert design["design_decisions"] == [
+        "For monolithic versus microservices, begin with a modular monolith and retain microservices as a future extension."
+    ]
