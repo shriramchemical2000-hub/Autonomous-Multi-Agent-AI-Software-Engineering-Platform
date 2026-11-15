@@ -27,7 +27,7 @@ ForgeAI is a human-supervised AI software engineering workspace that turns a pro
 - Generate a deterministic delivery evidence score, inspect artifact versions and blockers, and export a portable ZIP containing the project brief, artifact JSON, source bundle, readiness report, and audit history.
 - Export the readiness report separately as JSON; a passing test report counts only when tied to the exact latest source-bundle artifact ID.
 - Use documented deployment and evaluation checklists; the app does not provision hosting or claim a deployment.
-- Browse the app and create project records without an API key; live model generation requires `GEMINI_API_KEY`.
+- Browse the app and create project records without an API key; live model generation requires `NVIDIA_API_KEY`.
 
 ## Specialist team
 
@@ -57,7 +57,7 @@ The application checks the latest saved artifact's review status before enabling
 
 ## Technology
 
-Python 3.11+, Streamlit, SQLite, Pydantic, LangGraph, LangChain Gemini adapter, Pytest, and GitHub Actions.
+Python 3.11+, Streamlit, SQLite, Pydantic, LangGraph, NVIDIA NIM OpenAI-compatible adapter, Pytest, and GitHub Actions.
 
 ## Run locally
 
@@ -72,7 +72,7 @@ Run tests:
 pytest -q
 ```
 
-Configure `GEMINI_API_KEY` in the environment or a local `.env` file for real model requests. Never commit `.env` files, API keys, access tokens, or production data. Live generation is subject to Gemini availability and quota. CI uses fake providers and does not make paid or live model calls.
+Configure `NVIDIA_API_KEY` in Streamlit Secrets, the environment, or a local `.env` file for real model requests. Set `NVIDIA_MODEL` to a model identifier available in the NVIDIA API Catalog; the default is `meta/llama-3.3-70b-instruct`. Never commit `.env` files, API keys, access tokens, or production data. Hosted API availability and rate limits apply. CI uses fake providers and does not make live model calls.
 
 ## Safety and current limitations
 
