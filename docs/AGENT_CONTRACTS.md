@@ -2,7 +2,7 @@
 
 ## Provider boundary
 
-Agent code depends on the `ModelProvider` protocol, not directly on a vendor SDK. The initial `GeminiProvider` adapter uses LangChain's Google GenAI chat integration and loads credentials from application settings. The client is created lazily, so importing the application does not require credentials.
+Agent code depends on the `ModelProvider` protocol, not directly on a vendor SDK. The `NvidiaProvider` adapter uses NVIDIA NIM's OpenAI-compatible hosted chat-completions API and loads credentials from application settings. Agents consume only the shared `ModelProvider` protocol. The client is created lazily, so importing the application does not require credentials.
 
 Provider failures are translated to `ModelProviderError`. The adapter deliberately avoids returning raw request details or credentials in user-facing exception messages. A future provider can implement the same interface without changing agent contracts.
 
